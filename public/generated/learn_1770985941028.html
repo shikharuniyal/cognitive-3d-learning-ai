@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Nervous System Visualization</title>
+    <style>
+        body {
+            margin: 0;
+            background-color: #0a0a1a;
+            color: #fff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+            user-select: none;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        #info-panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            max-width: 320px;
+            padding: 20px;
+            background: rgba(10, 10, 26, 0.8);
+            border: 1px solid #00f3ff;
+            border-radius: 8px;
+            box-shadow: 0 0 15px rgba(0, 243, 255, 0.3);
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        h1 {
+            margin: 0 0 10px 0;
+            font-size: 1.5rem;
+            color: #00f3ff;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        p {
+            font-size: 0.9rem;
+            line-height: 1.4;
+            color: #e0e0e0;
+            margin-bottom: 15px;
+        }
+
+        .controls-hint {
+            font-size: 0.8rem;
+            color: #a855f7;
+            font-weight: bold;
+        }
+
+        #tooltip {
+            position: absolute;
+            padding: 10px;
+            background: rgba(168, 85, 247, 0.9);
+            border-radius: 4px;
+            pointer-events: none;
+            display: none;
+            z-index: 100;
+            font-size: 0.85rem;
+            max-width: 200px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.5);
+        }
+
+        .label {
+            position: absolute;
+            color: #00ff88;
+            font-size: 12px;
+            font-weight: bold;
+            pointer-events: none;
+            text-shadow: 0 0 5px #000;
+            white-space: nowrap;
+        }
+
+        .label::before {
+            content: '';
+            display: inline-block;
+            width: 10px;
+            height: 1px;
+            background: #00ff88;
+            margin-right: 5px;
+            vertical-align: middle;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="info-panel">
+        <h1>Human Nervous System</h1>
+        <p>The nervous system is a complex network of nerves and cells that carry messages to and from the brain and spinal cord to various parts of the body.</p>
+        <div class="controls-hint">Drag to rotate • Scroll to zoom • Click objects for info</div>
+    </div>
+
+    <div id="tooltip"></div>
+
+    <!-- Labels will be injected here -->
+    <div id="labels-container"></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+    <script>
+        /**
+         * SETUP
+         */
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0a0a1a);
+        
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.z = 12;
+        camera.position.y = 2;
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        document.body.appendChild(renderer.domElement);
+
+        // Lighting
+        const ambientLight = new THREE.AmbientLight(0x404040, 2);
+        scene.add(ambientLight);
+
+        const directionalLight = new THREE.DirectionalLight(0x00f3ff, 1);
+        directionalLight.position.set(5, 5, 5);
+        scene.add(directionalLight);
+
+        const pointLight = new THREE.PointLight(0xa855f7, 1);
+        pointLight.position.set(-5, -5, 5);
+        scene.add(pointLight);
+
+        /**
+         * MATERIALS
+         */
+        const brainMat = new THREE.MeshPhongMaterial({ 
+            color: 0xff006e, 
+            emissive: 0x4a0026, 
+            shininess: 100,
+            flatShading: false 
+        });
+        const spinalMat = new THREE.MeshPhongMaterial({ 
+            color: 0x00f3ff, 
+            emissive: 0x003344,
+            shininess: 80 
+        });
+        const nerveMat = new THREE.LineBasicMaterial({ color: 0x00ff88 });
+
+        /**
+         * MODEL GROUPS
+         */
+        const bodyGroup = new THREE.Group();
+        scene.add(bodyGroup);
+
+        // --- BRAIN ---
+        const brainGroup = new THREE.Group();
+        const leftHemi = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 32), brainMat);
+        leftHemi.scale.set(0.8, 1, 1.2);
+        leftHemi.position.x = -0.45;
+        
+        const rightHemi = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 32), brainMat);
+        rightHemi.scale.set(0.8, 1, 1.2);
+        rightHemi.position.x = 0.45;
+        
+        brainGroup.add(leftHemi, rightHemi);
+        brainGroup.position.y = 5;
+        brainGroup.userData = { name: "The Brain", info: "The Central Nervous System's control center. Processes sensory data and directs motor functions." };
+        bodyGroup.add(brainGroup);
+
+        // --- SPINAL CORD ---
+        const spinalGeo = new THREE.CylinderGeometry(0.15, 0.1, 8, 16);
+        const spinalCord = new THREE.Mesh(spinalGeo, spinalMat);
+        spinalCord.position.y = 0.5;
+        spinalCord.userData = { name: "Spinal Cord", info: "A long, thin bundle of nervous tissue that extends from the brain. It transmits signals between the brain and the rest of the body." };
+        bodyGroup.add(spinalCord);
+
+        // --- NERVES (Procedural) ---
+        const nervesGroup = new THREE.Group();
+        bodyGroup.add(nervesGroup);
+
+        function createNerve(startVec, endVec) {
+            const points = [startVec, endVec];
+            const geometry = new THREE.BufferGeometry().setFromPoints(points);
+            const line = new THREE.Line(geometry, nerveMat);
+            return line;
+        }
+
+        // Branching nerves
+        for (let i = 0; i < 15; i++) {
+            const yPos = 4 - (i * 0.6);
+            const spread = 1 + (i * 0.2);
+            
+            // Left Nerve
+            const leftNerve = createNerve(
+                new THREE.Vector3(0, yPos, 0),
+                new THREE.Vector3(-spread, yPos - 0.5, Math.sin(i) * 0.5)
+            );
+            nervesGroup.add(leftNerve);
+
+            // Right Nerve
+            const rightNerve = createNerve(
+                new THREE.Vector3(0, yPos, 0),
+                new THREE.Vector3(spread, yPos - 0.5, Math.sin(i) * 0.5)
+            );
+            nervesGroup.add(rightNerve);
+        }
+
+        // Sciatic Nerves (Legs)
+        const leftLeg = createNerve(new THREE.Vector3(0, -3.5, 0), new THREE.Vector3(-1.5, -8, 0.5));
+        const rightLeg = createNerve(new THREE.Vector3(0, -3.5, 0), new THREE.Vector3(1.5, -8, 0.5));
+        nervesGroup.add(leftLeg, rightLeg);
+
+        nervesGroup.userData = { name: "Peripheral Nerves", info: "Nerves that branch out from the spinal cord to the organs, skin, and limbs." };
+
+        /**
+         * INTERACTION LOGIC (MANUAL ORBIT)
+         */
+        let isDragging = false;
+        let previousMousePosition = { x: 0, y: 0 };
+        let targetRotationY = 0;
+        let targetRotationX = 0;
+        let zoom = 12;
+
+        window.addEventListener('mousedown', () => isDragging = true);
+        window.addEventListener('mouseup', () => isDragging = false);
+        window.addEventListener('mousemove', (e) => {
+            if (isDragging) {
+                const deltaMove = {
+                    x: e.offsetX - previousMousePosition.x,
+                    y: e.offsetY - previousMousePosition.y
+                };
+                targetRotationY += deltaMove.x * 0.01;
+                targetRotationX += deltaMove.y * 0.01;
+            }
+            previousMousePosition = { x: e.offsetX, y: e.offsetY };
+            
+            // Raycasting for hover/click
+            checkIntersection(e);
+        });
+
+        window.addEventListener('wheel', (e) => {
+            zoom += e.deltaY * 0.01;
+            zoom = Math.max(5, Math.min(25, zoom));
+        });
+
+        /**
+         * RAYCASTING
+         */
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+        const tooltip = document.getElementById('tooltip');
+
+        function checkIntersection(event) {
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(bodyGroup.children, true);
+
+            if (intersects.length > 0) {
+                let obj = intersects[0].object;
+                // Find parent with data if child doesn't have it
+                while (obj && !obj.userData.name && obj.parent) {
+                    obj = obj.parent;
+                }
+                
+                if (obj.userData.name) {
+                    document.body.style.cursor = 'pointer';
+                    if (event.type === 'mousedown') {
+                        tooltip.style.display = 'block';
+                        tooltip.style.left = event.clientX + 15 + 'px';
+                        tooltip.style.top = event.clientY + 15 + 'px';
+                        tooltip.innerHTML = `<strong>${obj.userData.name}</strong><br>${obj.userData.info}`;
+                    }
+                }
+            } else {
+                document.body.style.cursor = 'default';
+                if (event.type === 'mousedown') tooltip.style.display = 'none';
+            }
+        }
+
+        window.addEventListener('mousedown', checkIntersection);
+
+        /**
+         * LABELS
+         */
+        const labelData = [
+            { pos: new THREE.Vector3(1.5, 5.5, 0), text: "Cerebrum" },
+            { pos: new THREE.Vector3(0.5, 0, 0), text: "Spinal Cord" },
+            { pos: new THREE.Vector3(-2.5, -6, 0.5), text: "Sciatic Nerve" },
+            { pos: new THREE.Vector3(2.5, 2.5, 0), text: "Brachial Plexus" }
+        ];
+
+        const labelElements = labelData.map(data => {
+            const div = document.createElement('div');
+            div.className = 'label';
+            div.textContent = data.text;
+            document.getElementById('labels-container').appendChild(div);
+            return { div, pos: data.pos };
+        });
+
+        function updateLabels() {
+            labelElements.forEach(label => {
+                const vector = label.pos.clone();
+                // Apply object rotation to labels
+                vector.applyEuler(bodyGroup.rotation);
+                vector.project(camera);
+
+                const x = (vector.x * 0.5 + 0.5) * window.innerWidth;
+                const y = (-(vector.y * 0.5) + 0.5) * window.innerHeight;
+
+                label.div.style.left = `${x}px`;
+                label.div.style.top = `${y}px`;
+                
+                // Hide if behind camera
+                label.div.style.opacity = vector.z > 1 ? 0 : 1;
+            });
+        }
+
+        /**
+         * ANIMATION LOOP
+         */
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // Smooth rotation
+            bodyGroup.rotation.y += (targetRotationY - bodyGroup.rotation.y) * 0.1;
+            bodyGroup.rotation.x += (targetRotationX - bodyGroup.rotation.x) * 0.1;
+
+            // Zoom
+            camera.position.z += (zoom - camera.position.z) * 0.1;
+
+            // Pulsing effect for nerves and brain
+            const time = Date.now() * 0.002;
+            const pulse = Math.sin(time) * 0.2 + 0.8;
+            
+            brainMat.emissiveIntensity = pulse * 0.5;
+            nerveMat.opacity = pulse;
+            
+            // Subtle floating motion
+            bodyGroup.position.y = Math.sin(time * 0.5) * 0.2;
+
+            updateLabels();
+            renderer.render(scene, camera);
+        }
+
+        // Handle Resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Add a grid helper for futuristic look
+        const grid = new THREE.GridHelper(40, 40, 0x00f3ff, 0x0a2a2a);
+        grid.position.y = -10;
+        grid.material.opacity = 0.2;
+        grid.material.transparent = true;
+        scene.add(grid);
+
+        // Start
+        animate();
+    </script>
+</body>
+</html></html>

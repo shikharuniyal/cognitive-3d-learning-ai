@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Memory Battle Royale — Single Player</title>
+    <meta name="description"
+        content="Test your memory in this futuristic single-player cognitive challenge with pattern recall, sequence memory, and spatial memory challenges.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&family=Rajdhani:wght@300;400;500;600;700&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+    <!-- Particle background -->
+    <canvas id="particleCanvas"></canvas>
+
+    <!-- ============ LOGIN SCREEN ============ -->
+    <div id="loginScreen" class="screen active">
+        <div class="login-container">
+            <div class="logo-glow"></div>
+            <h1 class="game-title">
+                <span class="title-line">MEMORY</span>
+                <span class="title-line accent">BATTLE ROYALE</span>
+            </h1>
+            <p class="subtitle">SINGLE PLAYER CHALLENGE</p>
+            <div class="login-form">
+                <div class="input-group">
+                    <input type="text" id="usernameInput" placeholder="ENTER WARRIOR NAME" maxlength="15"
+                        autocomplete="off">
+                    <div class="input-glow"></div>
+                </div>
+                <div class="login-buttons">
+                    <button id="joinBtn" class="btn-primary" onclick="game.startGame()">
+                        <span class="btn-text">🎮 ENTER ARENA</span>
+                    </button>
+                    <button id="learnBtn" class="btn-primary btn-learn" onclick="game.showLearnInput()">
+                        <span class="btn-text">🧠 LEARN MODE</span>
+                    </button>
+                </div>
+            </div>
+            <div class="login-stats">
+                <div class="stat-item">
+                    <span class="stat-value">3</span>
+                    <span class="stat-label">CHALLENGE TYPES</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-value">10</span>
+                    <span class="stat-label">ROUNDS</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-value">∞</span>
+                    <span class="stat-label">DIFFICULTY</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============ COUNTDOWN SCREEN ============ -->
+    <div id="countdownScreen" class="screen">
+        <div class="countdown-container">
+            <div class="countdown-label">GET READY</div>
+            <div id="countdownNumber" class="countdown-number">3</div>
+            <div class="countdown-sublabel" id="playerGreeting"></div>
+        </div>
+    </div>
+
+    <!-- ============ GAME SCREEN ============ -->
+    <div id="gameScreen" class="screen">
+        <!-- Top Bar -->
+        <div class="game-topbar">
+            <div class="topbar-left">
+                <div class="round-badge">
+                    <span class="round-label">ROUND</span>
+                    <span id="roundNumber" class="round-num">1</span>
+                    <span class="round-total">/ 10</span>
+                </div>
+                <div class="challenge-type-badge" id="challengeTypeBadge">PATTERN</div>
+            </div>
+            <div class="topbar-center">
+                <div class="timer-ring" id="timerRing">
+                    <svg viewBox="0 0 100 100">
+                        <circle class="timer-bg" cx="50" cy="50" r="45" />
+                        <circle class="timer-progress" id="timerProgress" cx="50" cy="50" r="45" />
+                    </svg>
+                    <span id="timerText" class="timer-text">15</span>
+                </div>
+            </div>
+            <div class="topbar-right">
+                <div class="score-display">
+                    <span class="score-label">SCORE</span>
+                    <span id="totalScore" class="score-value">0</span>
+                </div>
+                <div class="streak-display" id="streakDisplay">
+                    <span class="streak-icon">🔥</span>
+                    <span id="streakCount" class="streak-value">0</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Phase Indicator -->
+        <div class="phase-banner" id="phaseBanner">
+            <span id="phaseText">MEMORIZE</span>
+        </div>
+
+        <!-- ========= Challenge Area ========= -->
+        <div class="challenge-area" id="challengeArea">
+
+            <!-- Pattern Challenge -->
+            <div id="patternChallenge" class="challenge hidden">
+                <p class="challenge-instruction" id="patternInstruction">Memorize the sequence, then reproduce it!</p>
+                <div id="patternGrid" class="pattern-grid"></div>
+                <div class="challenge-actions">
+                    <button class="btn-secondary" onclick="game.clearPatternAnswer()">CLEAR</button>
+                    <button class="btn-primary btn-submit" onclick="game.submitAnswer()">SUBMIT</button>
+                </div>
+            </div>
+
+            <!-- Sequence Challenge -->
+            <div id="sequenceChallenge" class="challenge hidden">
+                <p class="challenge-instruction" id="sequenceInstruction">Memorize the sequence!</p>
+                <div id="sequenceDisplay" class="sequence-display"></div>
+                <div id="sequenceOptions" class="sequence-options"></div>
+                <div id="sequenceAnswer" class="sequence-answer">
+                    <span class="answer-label">YOUR ANSWER:</span>
+                    <div id="sequenceAnswerItems" class="answer-items"></div>
+                </div>
+                <div class="challenge-actions">
+                    <button class="btn-secondary" onclick="game.clearSequenceAnswer()">CLEAR</button>
+                    <button class="btn-primary btn-submit" onclick="game.submitAnswer()">SUBMIT</button>
+                </div>
+            </div>
+
+            <!-- Spatial Challenge -->
+            <div id="spatialChallenge" class="challenge hidden">
+                <p class="challenge-instruction" id="spatialInstruction">Memorize the positions of the objects!</p>
+                <div id="spatialArea" class="spatial-area"></div>
+                <div class="challenge-actions">
+                    <button class="btn-secondary" onclick="game.resetSpatialPositions()">RESET</button>
+                    <button class="btn-primary btn-submit" onclick="game.submitAnswer()">SUBMIT</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============ ROUND RESULT SCREEN ============ -->
+    <div id="resultScreen" class="screen">
+        <div class="result-container">
+            <div class="result-header">
+                <h2 class="result-title" id="resultTitle">ROUND COMPLETE</h2>
+                <div class="result-round" id="resultRound">Round 1</div>
+            </div>
+            <div class="result-score-ring">
+                <svg viewBox="0 0 120 120">
+                    <circle class="score-ring-bg" cx="60" cy="60" r="54" />
+                    <circle class="score-ring-fill" id="scoreRingFill" cx="60" cy="60" r="54" />
+                </svg>
+                <div class="score-ring-value">
+                    <span id="roundScoreValue" class="big-score">0</span>
+                    <span class="score-max">/ 100</span>
+                </div>
+            </div>
+            <div class="result-stats">
+                <div class="result-stat">
+                    <span class="result-stat-icon">🎯</span>
+                    <span class="result-stat-label">Accuracy</span>
+                    <span id="resultAccuracy" class="result-stat-value">0%</span>
+                </div>
+                <div class="result-stat">
+                    <span class="result-stat-icon">⚡</span>
+                    <span class="result-stat-label">Speed</span>
+                    <span id="resultSpeed" class="result-stat-value">0s</span>
+                </div>
+                <div class="result-stat">
+                    <span class="result-stat-icon">🔥</span>
+                    <span class="result-stat-label">Streak</span>
+                    <span id="resultStreak" class="result-stat-value">0</span>
+                </div>
+                <div class="result-stat">
+                    <span class="result-stat-icon">📊</span>
+                    <span class="result-stat-label">Total Score</span>
+                    <span id="resultTotal" class="result-stat-value">0</span>
+                </div>
+            </div>
+            <div class="result-message" id="resultMessage">Nice job!</div>
+        </div>
+    </div>
+
+    <!-- ============ GAME OVER SCREEN ============ -->
+    <div id="gameOverScreen" class="screen">
+        <div class="gameover-container">
+            <div class="trophy-icon">🏆</div>
+            <h1 class="gameover-title">CHALLENGE COMPLETE</h1>
+            <p class="gameover-player" id="gameoverPlayer"></p>
+            <div class="final-score-display">
+                <span class="final-score-label">FINAL SCORE</span>
+                <span id="finalScore" class="final-score-value">0</span>
+            </div>
+            <div class="final-stats">
+                <div class="final-stat">
+                    <span class="final-stat-value" id="finalAccuracy">0%</span>
+                    <span class="final-stat-label">Accuracy</span>
+                </div>
+                <div class="final-stat">
+                    <span class="final-stat-value" id="finalAvgSpeed">0s</span>
+                    <span class="final-stat-label">Avg Speed</span>
+                </div>
+                <div class="final-stat">
+                    <span class="final-stat-value" id="finalMaxStreak">0</span>
+                    <span class="final-stat-label">Max Streak</span>
+                </div>
+                <div class="final-stat">
+                    <span class="final-stat-value" id="finalRounds">0</span>
+                    <span class="final-stat-label">Rounds</span>
+                </div>
+            </div>
+            <div class="round-breakdown" id="roundBreakdown">
+                <h3 class="breakdown-title">ROUND BREAKDOWN</h3>
+                <div id="breakdownList" class="breakdown-list"></div>
+            </div>
+            <button class="btn-primary btn-replay" onclick="game.restart()">
+                <span class="btn-text">PLAY AGAIN</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- ============ LEARN: TOPIC INPUT ============ -->
+    <div id="learnInputScreen" class="screen">
+        <div class="learn-input-container">
+            <div class="learn-icon">🧠</div>
+            <h1 class="learn-title">3D LEARNING LAB</h1>
+            <p class="learn-subtitle">Enter a topic and our AI will generate an interactive 3D visualization</p>
+            <div class="learn-form">
+                <div class="input-group learn-input-group">
+                    <input type="text" id="topicInput" placeholder="e.g. Solar System, DNA Structure, Atom..."
+                        maxlength="100" autocomplete="off">
+                    <div class="input-glow"></div>
+                </div>
+                <button class="btn-primary btn-visualize" onclick="game.submitTopic()">
+                    <span class="btn-text">⚡ VISUALIZE</span>
+                </button>
+            </div>
+            <div class="learn-suggestions">
+                <span class="suggestions-label">TRY:</span>
+                <button class="suggestion-chip" onclick="game.setTopic('Solar System')">Solar System</button>
+                <button class="suggestion-chip" onclick="game.setTopic('DNA Double Helix')">DNA Double Helix</button>
+                <button class="suggestion-chip" onclick="game.setTopic('Water Molecule')">Water Molecule</button>
+                <button class="suggestion-chip" onclick="game.setTopic('Pendulum Motion')">Pendulum Motion</button>
+            </div>
+            <button class="btn-secondary btn-back" onclick="game.restart()">← BACK TO MENU</button>
+        </div>
+    </div>
+
+    <!-- ============ LEARN: LOADING ============ -->
+    <div id="learnLoadingScreen" class="screen">
+        <div class="learn-loading-container">
+            <div class="loading-orb">
+                <div class="orb-ring ring1"></div>
+                <div class="orb-ring ring2"></div>
+                <div class="orb-ring ring3"></div>
+                <div class="orb-core">🧠</div>
+            </div>
+            <h2 class="loading-title">GENERATING VISUALIZATION</h2>
+            <div class="loading-steps">
+                <div id="loadStep1" class="loading-step active">
+                    <span class="step-dot"></span>
+                    <span>Analyzing topic...</span>
+                </div>
+                <div id="loadStep2" class="loading-step">
+                    <span class="step-dot"></span>
+                    <span>Building 3D objects...</span>
+                </div>
+                <div id="loadStep3" class="loading-step">
+                    <span class="step-dot"></span>
+                    <span>Applying animations...</span>
+                </div>
+            </div>
+            <p class="loading-hint" id="loadingTopic"></p>
+        </div>
+    </div>
+
+    <!-- ============ LEARN: VISUALIZATION ============ -->
+    <div id="learnVisScreen" class="screen">
+        <div class="learn-vis-container">
+            <div class="vis-topbar">
+                <button class="btn-secondary btn-back-vis" onclick="game.backToLearnInput()">← BACK</button>
+                <h2 class="vis-title" id="visTitle">Visualization</h2>
+                <button class="btn-secondary" onclick="game.toggleFullscreen()">⛶ FULLSCREEN</button>
+            </div>
+            <div class="vis-iframe-wrapper" id="visIframeWrapper">
+                <iframe id="visIframe" class="vis-iframe" sandbox="allow-scripts allow-same-origin"></iframe>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============ LEARN: NO 3D NEEDED ============ -->
+    <div id="learnNo3dScreen" class="screen">
+        <div class="no3d-container">
+            <div class="no3d-icon">📚</div>
+            <h2 class="no3d-title">3D VISUALIZATION NOT NEEDED</h2>
+            <p class="no3d-reason" id="no3dReason">This topic is better suited for text-based learning.</p>
+            <p class="no3d-suggestion">Try a topic involving physics, biology, chemistry, astronomy, or geometry!</p>
+            <button class="btn-primary" onclick="game.showLearnInput()">
+                <span class="btn-text">TRY ANOTHER TOPIC</span>
+            </button>
+        </div>
+    </div>
+
+    <script src="game.js"></script>
+</body>
+
+</html>

@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # cognitive-3d-learning-ai
 Cognitive 3D Learning — AI-powered single-player memory &amp; spatial-reasoning game (Three.js). On-demand Gemini LLM Learning Mode generates interactive 3D lessons.
 
@@ -40,3 +41,443 @@ cd cognitive-3d-learning-ai
 npm install
 npm start
 # open http://localhost:3000
+=======
+# 🎮 Memory Battle Royale
+
+A fully functional, real-time multiplayer memory battle royale game where 20 players compete in elimination rounds testing different types of memory. Built with vanilla JavaScript, Node.js, and WebSockets.
+
+![Memory Battle Royale](https://img.shields.io/badge/Status-Production%20Ready-green)
+![Players](https://img.shields.io/badge/Players-20-blue)
+![Challenges](https://img.shields.io/badge/Challenges-3-purple)
+
+---
+
+## 🚀 Features
+
+### Core Gameplay
+- **20-Player Multiplayer**: Real-time synchronized gameplay via WebSockets
+- **3 Memory Challenge Types**: Pattern Recall, Sequence Memory, Spatial Memory
+- **Progressive Difficulty**: Challenges get harder each round
+- **Elimination Rounds**: 5 players eliminated per round until 1 winner remains
+- **Live Leaderboard**: Real-time rankings during gameplay
+- **Spectator Mode**: Continue watching after elimination
+
+### Challenge Types
+
+#### 1. Pattern Recall
+- Grid lights up in a sequence
+- Players must reproduce the exact pattern
+- Grid size: 5x5 to 8x8
+- Sequence length: 4 to 16 steps
+- Increasing complexity each round
+
+#### 2. Sequence Memory
+- Mixed numbers, symbols, and colors appear
+- Three challenge modes:
+  - **Forward**: Recall in original order
+  - **Reverse**: Recall in reverse order
+  - **Filter**: Recall only specific types (e.g., only numbers)
+- Sequence length: 5 to 15 items
+
+#### 3. Spatial Memory
+- Objects appear in specific positions
+- Players must place them back correctly
+- Object types: circles, squares, triangles, stars, diamonds
+- Count: 4 to 12 objects
+- Drag-and-drop interface
+
+### Scoring System
+- **Accuracy** (70%): Correctness of answer
+- **Speed** (30%): Response time bonus
+- **Combo Streaks**: Consecutive correct answers
+- **Statistics Tracking**: Accuracy %, average speed, max streak
+
+### Visual & Audio Design
+- **Futuristic Neon Cyber-Arena UI**: Custom CSS with glowing effects
+- **60 FPS Animations**: Smooth transitions and effects
+- **Particle Background**: Animated floating particles
+- **Procedural Sound Effects**: Web Audio API for dynamic sounds
+- **Victory Confetti**: Celebratory animations for winners
+- **Responsive Design**: Works on desktop and mobile
+
+---
+
+## 📁 Project Structure
+
+```
+memory-battle-royale/
+├── server.js           # Node.js WebSocket server
+├── package.json        # Dependencies
+├── public/             # Frontend files
+│   ├── index.html      # Main HTML
+│   ├── styles.css      # Cyber-arena styling
+│   └── game.js         # Game client logic
+└── README.md           # This file
+```
+
+---
+
+## 🛠️ Installation & Setup
+
+### Prerequisites
+- Node.js 14+ installed
+- npm or yarn package manager
+
+### Step 1: Extract Files
+Extract all files to a directory, maintaining this structure:
+```
+memory-battle-royale/
+├── server.js
+├── package.json
+└── public/
+    ├── index.html
+    ├── styles.css
+    └── game.js
+```
+
+### Step 2: Install Dependencies
+```bash
+cd memory-battle-royale
+npm install
+```
+
+This installs:
+- `express`: Web server
+- `ws`: WebSocket library
+- `nodemon` (dev): Auto-restart server
+
+### Step 3: Create Public Directory
+```bash
+mkdir public
+```
+
+### Step 4: Move Frontend Files
+Move these files to the `public/` directory:
+- `index.html`
+- `styles.css`
+- `game.js`
+
+### Step 5: Start the Server
+```bash
+npm start
+```
+
+Or for development with auto-restart:
+```bash
+npm run dev
+```
+
+### Step 6: Open in Browser
+```
+http://localhost:3000
+```
+
+---
+
+## 🎯 How to Play
+
+### Getting Started
+1. Enter your warrior name
+2. Click "ENTER ARENA"
+3. Wait in matchmaking lobby
+4. Game starts when 20 players join (or use "START GAME" button for testing with 2+ players)
+
+### During Rounds
+1. **Memorize Phase**: Pay attention to the challenge (2-4 seconds)
+2. **Recall Phase**: Reproduce what you saw (15 seconds)
+3. **Submit Answer**: Click submit when ready
+4. **View Results**: See rankings and eliminations
+
+### Challenge Controls
+
+#### Pattern Recall
+- Click cells in the order they lit up
+- Click again to deselect
+- "CLEAR" button resets your answer
+- "SUBMIT" when ready
+
+#### Sequence Memory
+- Click items in the correct order
+- Items appear below as you select them
+- Click items to remove them
+- "CLEAR" resets, "SUBMIT" when ready
+
+#### Spatial Memory
+- Drag objects to their remembered positions
+- "RESET" randomizes positions again
+- "SUBMIT" when satisfied with placement
+
+### Winning Strategy
+- **Accuracy matters most**: 70% of your score
+- **Speed counts**: 30% bonus for fast responses
+- **Build streaks**: Consecutive correct answers help
+- **Stay calm**: Elimination pressure is part of the game
+
+---
+
+## 🔧 Configuration
+
+### Server Settings (server.js)
+```javascript
+const PLAYERS_PER_GAME = 20;        // Players per match
+const ROUND_DURATION = 15000;       // 15 seconds per round
+const ELIMINATION_COUNT = 5;        // Players eliminated per round
+```
+
+### Difficulty Scaling
+- Grid size: 5 + difficulty (max 8)
+- Sequence length: 4 + (difficulty × 2) (max 16)
+- Object count: 4 + difficulty (max 12)
+- Display time: 2000 + (difficulty × 500) ms
+
+### Port Configuration
+Default port: 3000
+Change via environment variable:
+```bash
+PORT=8080 npm start
+```
+
+---
+
+## 🌐 Multiplayer Architecture
+
+### WebSocket Communication
+- **Client → Server**: Player joins, submits answers
+- **Server → Client**: Game state updates, round data, results
+- **Broadcast**: All players receive synchronized updates
+
+### Game Flow
+```
+1. LOGIN → Join lobby
+2. LOBBY → Wait for players
+3. COUNTDOWN → 3-2-1 preparation
+4. ROUNDS → Challenge cycles
+   ├─ Show pattern/sequence/spatial
+   ├─ Collect player answers
+   ├─ Calculate scores
+   ├─ Eliminate bottom players
+   └─ Repeat until winner
+5. VICTORY → Final rankings
+```
+
+### State Management
+- Each game instance is isolated
+- Player scores tracked per game
+- Automatic game cleanup after completion
+- Reconnection handling (auto-reconnect on disconnect)
+
+---
+
+## 🎨 Customization
+
+### Colors (styles.css)
+```css
+:root {
+    --neon-blue: #00f3ff;
+    --neon-pink: #ff006e;
+    --neon-purple: #a855f7;
+    --neon-green: #00ff88;
+}
+```
+
+### Sound Effects (game.js)
+```javascript
+playSoundEffect(effect) {
+    // Add custom sound effects here
+}
+```
+
+### Challenge Types
+Add new challenges by:
+1. Creating generator function in `server.js`
+2. Adding handler in `game.js`
+3. Creating UI in `index.html` and `styles.css`
+
+---
+
+## 📊 Technical Details
+
+### Frontend
+- **No frameworks**: Pure vanilla JavaScript
+- **WebSocket Client**: Real-time communication
+- **Web Audio API**: Procedural sound generation
+- **CSS3 Animations**: Hardware-accelerated
+- **Drag & Drop API**: For spatial challenges
+
+### Backend
+- **Express.js**: HTTP server
+- **ws Library**: WebSocket server
+- **Game Class**: Encapsulated game logic
+- **Event-driven**: Async/await patterns
+
+### Performance
+- 60 FPS animations
+- Optimized WebSocket messages
+- Efficient DOM updates
+- Memory-conscious cleanup
+
+---
+
+## 🐛 Troubleshooting
+
+### Port Already in Use
+```bash
+# Kill process on port 3000
+# macOS/Linux:
+lsof -ti:3000 | xargs kill -9
+# Windows:
+netstat -ano | findstr :3000
+taskkill /PID [PID] /F
+```
+
+### WebSocket Connection Failed
+- Check firewall settings
+- Ensure server is running
+- Try different port
+- Check browser console for errors
+
+### Players Not Syncing
+- Verify all players on same server
+- Check network connectivity
+- Clear browser cache
+- Restart server
+
+### Audio Not Working
+- Click page to activate audio context
+- Check browser audio permissions
+- Try different browser
+- Verify speakers/volume
+
+---
+
+## 🚀 Deployment
+
+### Local Network (LAN Party)
+1. Find your local IP:
+   ```bash
+   # macOS/Linux
+   ifconfig | grep "inet "
+   # Windows
+   ipconfig
+   ```
+2. Start server: `npm start`
+3. Players connect to: `http://YOUR_IP:3000`
+
+### Cloud Deployment
+
+#### Heroku
+```bash
+heroku create memory-battle-royale
+git push heroku main
+heroku open
+```
+
+#### DigitalOcean / AWS / GCP
+1. Set up Node.js server
+2. Install dependencies
+3. Configure port (use environment variable)
+4. Set up reverse proxy (nginx)
+5. Enable WebSocket support
+6. Use PM2 for process management
+
+#### Replit
+1. Import repository
+2. Click "Run"
+3. Share the URL
+
+---
+
+## 🎯 Testing
+
+### Single Player Testing
+- Enabled "START GAME" button appears with 2+ players
+- Test all challenge types
+- Verify scoring system
+- Check elimination logic
+
+### Multiplayer Testing
+- Open multiple browser tabs
+- Enter different usernames
+- Play through full game
+- Test reconnection handling
+
+---
+
+## 📈 Future Enhancements
+
+### Potential Features
+- [ ] ELO ranking system
+- [ ] Player profiles & stats
+- [ ] Custom game modes
+- [ ] Power-ups / abilities
+- [ ] Team battles
+- [ ] Tournament brackets
+- [ ] Chat system
+- [ ] Replay system
+- [ ] Mobile app version
+- [ ] More challenge types
+- [ ] Customizable themes
+- [ ] Achievement system
+
+---
+
+## 🤝 Contributing
+
+Feel free to:
+- Report bugs
+- Suggest features
+- Submit pull requests
+- Improve documentation
+
+---
+
+## 📄 License
+
+MIT License - Feel free to use and modify for your projects!
+
+---
+
+## 🎮 Game Tips
+
+### For New Players
+1. Start by focusing on accuracy over speed
+2. Use memory techniques (chunking, visualization)
+3. Practice pattern recognition
+4. Stay calm under pressure
+5. Learn from each round
+
+### Advanced Strategies
+1. **Pattern Recall**: Group cells into shapes
+2. **Sequence Memory**: Create mnemonics
+3. **Spatial Memory**: Use reference points
+4. **Speed**: Train muscle memory
+5. **Consistency**: Maintain focus throughout
+
+---
+
+## 📞 Support
+
+For issues or questions:
+- Check troubleshooting section
+- Review game documentation
+- Test in different browser
+- Clear cache and reload
+
+---
+
+## 🏆 Credits
+
+Built with passion for competitive gaming and cognitive challenges!
+
+**Technologies Used:**
+- Node.js & Express
+- WebSocket (ws)
+- Vanilla JavaScript
+- CSS3 Animations
+- Web Audio API
+- HTML5 Drag & Drop
+
+---
+
+**Ready to Battle?** Fire up the server and prove your memory supremacy! 🎮✨
+>>>>>>> Initial commit of Memory Battle Royale with Learning Mode

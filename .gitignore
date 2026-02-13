@@ -1,0 +1,5 @@
+node_modules
+.env
+mind_game_dist
+.DS_Store
+*.zip

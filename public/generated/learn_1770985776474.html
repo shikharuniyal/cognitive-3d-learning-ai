@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive 3D Brain Model</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #0a0a1a;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: #fff;
+        }
+
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+        }
+
+        /* Info Panel Style */
+        #info-panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            max-width: 320px;
+            background: rgba(10, 10, 26, 0.8);
+            border: 1px solid #00f3ff;
+            border-radius: 8px;
+            padding: 20px;
+            pointer-events: auto;
+            box-shadow: 0 0 20px rgba(0, 243, 255, 0.2);
+            backdrop-filter: blur(5px);
+            z-index: 100;
+        }
+
+        h1 {
+            margin: 0 0 10px 0;
+            font-size: 1.5rem;
+            color: #00f3ff;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        p {
+            font-size: 0.9rem;
+            line-height: 1.4;
+            color: #ccc;
+        }
+
+        .instructions {
+            margin-top: 15px;
+            font-size: 0.8rem;
+            color: #a855f7;
+            font-weight: bold;
+        }
+
+        /* Tooltip Style */
+        #tooltip {
+            position: absolute;
+            display: none;
+            background: rgba(168, 85, 247, 0.9);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 4px;
+            font-size: 0.9rem;
+            pointer-events: none;
+            z-index: 1000;
+            max-width: 250px;
+            box-shadow: 0 0 15px rgba(168, 85, 247, 0.5);
+        }
+
+        /* Labels Container */
+        #labels-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        .label {
+            position: absolute;
+            color: #00f3ff;
+            font-weight: bold;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 2px 6px;
+            border-left: 2px solid #00f3ff;
+            pointer-events: none;
+            white-space: nowrap;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #00f3ff;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="info-panel">
+        <h1>Brain Anatomy</h1>
+        <p>Explore the primary regions of the human brain. Each part plays a critical role in how we perceive, think, and move.</p>
+        <div class="instructions">Drag to rotate • Scroll to zoom • Click objects for info</div>
+    </div>
+
+    <div id="tooltip"></div>
+    <div id="labels-container"></div>
+    <div id="canvas-container"></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        /**
+         * CONFIGURATION & DATA
+         */
+        const BRAIN_PARTS = [
+            {
+                name: "Frontal Lobe",
+                color: 0x00f3ff,
+                pos: { x: 0, y: 0.8, z: 1.8 },
+                scale: { x: 2.2, y: 1.8, z: 1.8 },
+                info: "Responsible for higher cognitive functions: decision making, planning, and personality."
+            },
+            {
+                name: "Parietal Lobe",
+                color: 0xa855f7,
+                pos: { x: 0, y: 1.8, z: -0.8 },
+                scale: { x: 2.1, y: 1.6, z: 1.8 },
+                info: "Processes sensory information like touch, pressure, and spatial awareness."
+            },
+            {
+                name: "Temporal Lobe",
+                color: 0xff006e,
+                pos: { x: 1.8, y: -0.2, z: 0.2 },
+                scale: { x: 1, y: 1.2, z: 2 },
+                info: "Key for auditory processing, memory, and language comprehension."
+            },
+            {
+                name: "Temporal Lobe",
+                color: 0xff006e,
+                pos: { x: -1.8, y: -0.2, z: 0.2 },
+                scale: { x: 1, y: 1.2, z: 2 },
+                info: "Key for auditory processing, memory, and language comprehension."
+            },
+            {
+                name: "Occipital Lobe",
+                color: 0x00ff88,
+                pos: { x: 0, y: 0.2, z: -2.5 },
+                scale: { x: 1.8, y: 1.5, z: 1.2 },
+                info: "The visual processing center of the mammalian brain."
+            },
+            {
+                name: "Cerebellum",
+                color: 0xffff00,
+                pos: { x: 0, y: -1.8, z: -1.8 },
+                scale: { x: 1.6, y: 1.2, z: 1.4 },
+                info: "Coordinates voluntary movements such as posture, balance, and coordination."
+            },
+            {
+                name: "Brainstem",
+                color: 0xffffff,
+                pos: { x: 0, y: -2.5, z: 0 },
+                scale: { x: 0.6, y: 2.5, z: 0.6 },
+                info: "Controls fundamental life functions like breathing, heart rate, and blood pressure."
+            }
+        ];
+
+        /**
+         * CORE VARIABLES
+         */
+        let scene, camera, renderer, raycaster, mouse;
+        let brainGroup;
+        let brainMeshes = [];
+        let labels = [];
+        
+        // Manual Orbit Control Variables
+        let isDragging = false;
+        let previousMouseX = 0;
+        let previousMouseY = 0;
+        let theta = Math.PI / 4;
+        let phi = Math.PI / 3;
+        let radius = 12;
+
+        /**
+         * INITIALIZATION
+         */
+        function init() {
+            // Scene & Camera
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0a0a1a);
+            
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+            updateCameraPosition();
+
+            // Renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+            scene.add(ambientLight);
+
+            const pointLight1 = new THREE.PointLight(0x00f3ff, 1);
+            pointLight1.position.set(10, 10, 10);
+            scene.add(pointLight1);
+
+            const pointLight2 = new THREE.PointLight(0xa855f7, 1);
+            pointLight2.position.set(-10, -10, 10);
+            scene.add(pointLight2);
+
+            // Grid Helper (Subtle)
+            const grid = new THREE.GridHelper(20, 20, 0x222244, 0x111122);
+            grid.position.y = -5;
+            scene.add(grid);
+
+            // Brain Model Group
+            brainGroup = new THREE.Group();
+            createBrain();
+            scene.add(brainGroup);
+
+            // Raycaster
+            raycaster = new THREE.Raycaster();
+            mouse = new THREE.Vector2();
+
+            // Event Listeners
+            window.addEventListener('resize', onWindowResize);
+            document.addEventListener('mousedown', onMouseDown);
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('mouseup', onMouseUp);
+            document.addEventListener('wheel', onWheel);
+            document.addEventListener('click', onClick);
+
+            animate();
+        }
+
+        function createBrain() {
+            BRAIN_PARTS.forEach((part, index) => {
+                const geometry = new THREE.SphereGeometry(1, 32, 32);
+                const material = new THREE.MeshPhongMaterial({
+                    color: part.color,
+                    transparent: true,
+                    opacity: 0.85,
+                    shininess: 100,
+                    emissive: part.color,
+                    emissiveIntensity: 0.2
+                });
+
+                const mesh = new THREE.Mesh(geometry, material);
+                mesh.position.set(part.pos.x, part.pos.y, part.pos.z);
+                mesh.scale.set(part.scale.x, part.scale.y, part.scale.z);
+                
+                // Store metadata
+                mesh.userData = { 
+                    name: part.name, 
+                    info: part.info,
+                    originalScale: { ...part.scale }
+                };
+
+                brainGroup.add(mesh);
+                brainMeshes.push(mesh);
+
+                // Create HTML Label
+                const labelDiv = document.createElement('div');
+                labelDiv.className = 'label';
+                labelDiv.textContent = part.name;
+                document.getElementById('labels-container').appendChild(labelDiv);
+                labels.push({ element: labelDiv, position: mesh.position.clone() });
+            });
+        }
+
+        /**
+         * INTERACTION HANDLERS
+         */
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function onMouseDown(e) { isDragging = true; }
+        function onMouseUp(e) { isDragging = false; }
+
+        function onMouseMove(e) {
+            if (isDragging) {
+                const deltaX = e.clientX - previousMouseX;
+                const deltaY = e.clientY - previousMouseY;
+                theta -= deltaX * 0.01;
+                phi -= deltaY * 0.01;
+                phi = Math.max(0.1, Math.min(Math.PI - 0.1, phi));
+                updateCameraPosition();
+            }
+            previousMouseX = e.clientX;
+            previousMouseY = e.clientY;
+        }
+
+        function onWheel(e) {
+            radius += e.deltaY * 0.01;
+            radius = Math.max(5, Math.min(30, radius));
+            updateCameraPosition();
+        }
+
+        function updateCameraPosition() {
+            camera.position.x = radius * Math.sin(phi) * Math.cos(theta);
+            camera.position.y = radius * Math.cos(phi);
+            camera.position.z = radius * Math.sin(phi) * Math.sin(theta);
+            camera.lookAt(0, 0, 0);
+        }
+
+        function onClick(e) {
+            mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(brainMeshes);
+
+            const tooltip = document.getElementById('tooltip');
+            if (intersects.length > 0) {
+                const obj = intersects[0].object;
+                tooltip.style.display = 'block';
+                tooltip.style.left = e.clientX + 15 + 'px';
+                tooltip.style.top = e.clientY + 15 + 'px';
+                tooltip.innerHTML = `<strong>${obj.userData.name}</strong><br>${obj.userData.info}`;
+                
+                // Visual feedback
+                obj.material.emissiveIntensity = 1.0;
+                setTimeout(() => { obj.material.emissiveIntensity = 0.2; }, 500);
+            } else {
+                tooltip.style.display = 'none';
+            }
+        }
+
+        /**
+         * ANIMATION LOOP
+         */
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const time = Date.now() * 0.001;
+
+            // Subtle rotation of the whole brain
+            brainGroup.rotation.y += 0.002;
+
+            // Pulsing effect for parts
+            brainMeshes.forEach((mesh, i) => {
+                const pulse = Math.sin(time + i) * 0.05 + 1;
+                mesh.scale.set(
+                    mesh.userData.originalScale.x * pulse,
+                    mesh.userData.originalScale.y * pulse,
+                    mesh.userData.originalScale.z * pulse
+                );
+            });
+
+            // Update Labels
+            labels.forEach(label => {
+                const vector = label.position.clone();
+                // Account for group rotation
+                vector.applyMatrix4(brainGroup.matrixWorld);
+                vector.project(camera);
+
+                const x = (vector.x * 0.5 + 0.5) * window.innerWidth;
+                const y = (-(vector.y * 0.5) + 0.5) * window.innerHeight;
+
+                // Only show if in front of camera
+                if (vector.z < 1) {
+                    label.element.style.display = 'block';
+                    label.element.style.transform = `translate(${x}px, ${y}px)`;
+                } else {
+                    label.element.style.display = 'none';
+                }
+            });
+
+            renderer.render(scene, camera);
+        }
+
+        // Start the app
+        init();
+    </script>
+</body>
+</html></html>

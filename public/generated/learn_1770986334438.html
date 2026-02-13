@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Electromagnetic Helix Visualization</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #0a0a1a;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: white;
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .info-panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            max-width: 320px;
+            background: rgba(10, 10, 26, 0.8);
+            border: 1px solid #00f3ff;
+            padding: 20px;
+            border-radius: 8px;
+            pointer-events: auto;
+            backdrop-filter: blur(5px);
+            box-shadow: 0 0 15px rgba(0, 243, 255, 0.3);
+        }
+
+        h1 {
+            margin: 0 0 10px 0;
+            font-size: 1.2rem;
+            color: #00f3ff;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        p {
+            font-size: 0.9rem;
+            line-height: 1.4;
+            color: #e0e0e0;
+        }
+
+        .instructions {
+            margin-top: 15px;
+            font-style: italic;
+            font-size: 0.8rem;
+            color: #a855f7;
+        }
+
+        .label {
+            position: absolute;
+            padding: 5px 10px;
+            background: rgba(0, 0, 0, 0.6);
+            border: 1px solid #ff006e;
+            border-radius: 4px;
+            font-size: 12px;
+            pointer-events: none;
+            transform: translate(-50%, -50%);
+            white-space: nowrap;
+            text-transform: uppercase;
+        }
+
+        #tooltip {
+            position: absolute;
+            display: none;
+            background: #a855f7;
+            color: white;
+            padding: 10px;
+            border-radius: 4px;
+            font-size: 13px;
+            pointer-events: none;
+            max-width: 200px;
+            z-index: 100;
+            box-shadow: 0 0 10px rgba(168, 85, 247, 0.5);
+        }
+
+        .controls-hint {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 0.8rem;
+            color: #00ff88;
+            letter-spacing: 1px;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="ui-layer">
+        <div class="info-panel">
+            <h1>Helical Motion</h1>
+            <p>Observe a charged particle moving through a uniform magnetic field (B). Because the velocity has components both parallel and perpendicular to the field, the resulting path is a <strong>helix</strong>.</p>
+            <p>The perpendicular component creates circular motion, while the parallel component creates constant linear motion.</p>
+            <div class="instructions">Drag to rotate • Scroll to zoom • Click objects for info</div>
+        </div>
+
+        <div id="label-b" class="label" style="border-color: #00f3ff; color: #00f3ff;">Magnetic Field (B)</div>
+        <div id="label-particle" class="label" style="border-color: #a855f7; color: #a855f7;">Charged Particle</div>
+        <div id="label-path" class="label" style="border-color: #00ff88; color: #00ff88;">Helical Path</div>
+
+        <div id="tooltip"></div>
+        <div class="controls-hint">INTERACTIVE 3D SIMULATION</div>
+    </div>
+
+    <script>
+        // --- THREE.JS SETUP ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0a0a1a);
+        
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(10, 10, 20);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        document.body.appendChild(renderer.domElement);
+
+        // --- LIGHTING ---
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+        scene.add(ambientLight);
+
+        const directionalLight = new THREE.DirectionalLight(0x00f3ff, 1);
+        directionalLight.position.set(5, 10, 7);
+        scene.add(directionalLight);
+
+        // --- GRID & ENVIRONMENT ---
+        const grid = new THREE.GridHelper(40, 40, 0x1a1a3a, 0x1a1a3a);
+        grid.position.y = -5;
+        scene.add(grid);
+
+        // --- MAGNETIC FIELD LINES (CYAN) ---
+        const fieldGroup = new THREE.Group();
+        const arrowMaterial = new THREE.MeshPhongMaterial({ color: 0x00f3ff, emissive: 0x004444 });
+        for (let x = -10; x <= 10; x += 5) {
+            for (let y = -10; y <= 10; y += 5) {
+                const dir = new THREE.Vector3(0, 0, 1);
+                const origin = new THREE.Vector3(x, y, -15);
+                const length = 30;
+                const hex = 0x00f3ff;
+                const arrowHelper = new THREE.ArrowHelper(dir, origin, length, hex, 0.5, 0.3);
+                fieldGroup.add(arrowHelper);
+            }
+        }
+        scene.add(fieldGroup);
+        fieldGroup.userData = { info: "Uniform Magnetic Field (B): Exerts a Lorentz force perpendicular to the particle's velocity." };
+
+        // --- THE PARTICLE (PURPLE) ---
+        const particleGeo = new THREE.SphereGeometry(0.4, 32, 32);
+        const particleMat = new THREE.MeshPhongMaterial({ 
+            color: 0xa855f7, 
+            emissive: 0x5825a7,
+            shininess: 100 
+        });
+        const particle = new THREE.Mesh(particleGeo, particleMat);
+        scene.add(particle);
+        particle.userData = { info: "Charged Particle: Its motion is governed by F = q(v × B)." };
+
+        // --- THE PATH (GREEN NEON) ---
+        const MAX_POINTS = 1000;
+        const pathGeometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(MAX_POINTS * 3);
+        pathGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        const pathMaterial = new THREE.LineBasicMaterial({ color: 0x00ff88, linewidth: 2 });
+        const pathLine = new THREE.Line(pathGeometry, pathMaterial);
+        scene.add(pathLine);
+        pathLine.userData = { info: "Helical Path: The result of circular motion in XY and linear motion in Z." };
+
+        // --- ANIMATION VARIABLES ---
+        let time = 0;
+        const radius = 4;
+        const frequency = 1.5;
+        const vz = 2.0; // Velocity along Z
+        const points = [];
+
+        // --- INTERACTION LOGIC ---
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+        const tooltip = document.getElementById('tooltip');
+
+        // Manual Controls Variables
+        let isDragging = false;
+        let previousMousePosition = { x: 0, y: 0 };
+        const rotationGroup = new THREE.Group(); // Use a group to rotate everything
+        scene.add(rotationGroup);
+        rotationGroup.add(fieldGroup);
+        rotationGroup.add(particle);
+        rotationGroup.add(pathLine);
+
+        // --- EVENT LISTENERS ---
+        window.addEventListener('mousedown', (e) => { 
+            isDragging = true;
+            checkClick(e);
+        });
+        window.addEventListener('mouseup', () => isDragging = false);
+        window.addEventListener('mousemove', (e) => {
+            if (isDragging) {
+                const deltaMove = {
+                    x: e.offsetX - previousMousePosition.x,
+                    y: e.offsetY - previousMousePosition.y
+                };
+                rotationGroup.rotation.y += deltaMove.x * 0.01;
+                rotationGroup.rotation.x += deltaMove.y * 0.01;
+            }
+            previousMousePosition = { x: e.offsetX, y: e.offsetY };
+            
+            // For raycasting on hover (optional)
+            mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+        });
+
+        window.addEventListener('wheel', (e) => {
+            camera.position.z += e.deltaY * 0.02;
+            camera.position.z = Math.max(5, Math.min(camera.position.z, 50));
+        });
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        function checkClick(e) {
+            mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+            raycaster.setFromCamera(mouse, camera);
+            
+            const intersects = raycaster.intersectObjects([particle, pathLine, ...fieldGroup.children], true);
+            
+            if (intersects.length > 0) {
+                let obj = intersects[0].object;
+                // Handle arrow helpers which are nested
+                if (obj.parent && obj.parent.type === 'Group') obj = obj.parent;
+                if (obj.parent && obj.parent.parent && obj.parent.parent.userData.info) obj = obj.parent.parent;
+
+                const data = obj.userData.info || "Interactive Element";
+                tooltip.style.display = 'block';
+                tooltip.style.left = e.clientX + 10 + 'px';
+                tooltip.style.top = e.clientY + 10 + 'px';
+                tooltip.innerHTML = data;
+                
+                setTimeout(() => { tooltip.style.display = 'none'; }, 3000);
+            } else {
+                tooltip.style.display = 'none';
+            }
+        }
+
+        // --- LABEL PROJECTION ---
+        const labelB = document.getElementById('label-b');
+        const labelP = document.getElementById('label-particle');
+        const labelPath = document.getElementById('label-path');
+
+        function updateLabels() {
+            const positions = [
+                { el: labelB, pos: new THREE.Vector3(10, 10, 0) },
+                { el: labelP, pos: particle.position.clone().applyMatrix4(rotationGroup.matrixWorld) },
+                { el: labelPath, pos: new THREE.Vector3(radius, 0, 0).applyMatrix4(rotationGroup.matrixWorld) }
+            ];
+
+            positions.forEach(item => {
+                const vector = item.pos.project(camera);
+                const x = (vector.x * .5 + .5) * window.innerWidth;
+                const y = (-(vector.y * .5) + .5) * window.innerHeight;
+                item.el.style.left = `${x}px`;
+                item.el.style.top = `${y}px`;
+            });
+        }
+
+        // --- MAIN ANIMATION LOOP ---
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            time += 0.02;
+
+            // Calculate helix position
+            const px = Math.cos(time * frequency) * radius;
+            const py = Math.sin(time * frequency) * radius;
+            const pz = (time * vz) % 30 - 15; // Loop position between -15 and 15
+
+            particle.position.set(px, py, pz);
+
+            // Update trail
+            points.push(new THREE.Vector3(px, py, pz));
+            if (points.length > MAX_POINTS) points.shift();
+
+            const pathPos = pathLine.geometry.attributes.position.array;
+            for (let i = 0; i < points.length; i++) {
+                pathPos[i * 3] = points[i].x;
+                pathPos[i * 3 + 1] = points[i].y;
+                pathPos[i * 3 + 2] = points[i].z;
+            }
+            pathLine.geometry.setDrawRange(0, points.length);
+            pathLine.geometry.attributes.position.needsUpdate = true;
+
+            // Reset trail if particle loops
+            if (pz < -14.8) points.length = 0;
+
+            // Subtle pulsing for particle
+            const scale = 1 + Math.sin(time * 5) * 0.1;
+            particle.scale.set(scale, scale, scale);
+
+            updateLabels();
+            renderer.render(scene, camera);
+        }
+
+        animate();
+    </script>
+</body>
+</html>
