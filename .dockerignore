@@ -1,0 +1,32 @@
+# Ignore node_modules (will be installed in Docker)
+node_modules
+npm-debug.log
+
+# Ignore git files
+.git
+.gitignore
+
+# Ignore Docker files
+Dockerfile
+.dockerignore
+*.ps1
+
+# Ignore IDE files
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# Ignore OS files
+.DS_Store
+Thumbs.db
+
+# Ignore logs
+*.log
+logs/
+
+# Ignore temporary files
+tmp/
+temp/
+*.tmp

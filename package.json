@@ -1,7 +1,7 @@
 {
   "name": "memory-battle-royale",
   "version": "1.0.0",
-  "description": "Memory Battle Royale — Single Player cognitive challenge game",
+  "description": "Memory Battle Royale — Multiplayer cognitive challenge game with ELO ratings, ML predictions, and AI-powered 3D learning",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -10,9 +10,14 @@
   "keywords": [
     "game",
     "memory",
-    "single-player",
+    "multiplayer",
     "cognitive",
-    "battle-royale"
+    "battle-royale",
+    "elo-rating",
+    "machine-learning",
+    "prediction",
+    "three-js",
+    "ai-learning"
   ],
   "author": "",
   "license": "MIT",
@@ -20,7 +25,11 @@
     "express": "^4.18.2",
     "cors": "^2.8.5",
     "body-parser": "^1.20.2",
-    "dotenv": "^16.3.1"
+    "dotenv": "^16.3.1",
+    "mongoose": "^8.0.3",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2",
+    "socket.io": "^4.6.1"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"

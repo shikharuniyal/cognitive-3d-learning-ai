@@ -5,6 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Memory Battle Royale — Single Player</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
     <meta name="description"
         content="Test your memory in this futuristic single-player cognitive challenge with pattern recall, sequence memory, and spatial memory challenges.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -13,11 +14,36 @@
         href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&family=Rajdhani:wght@300;400;500;600;700&display=swap"
         rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
 
 <body>
     <!-- Particle background -->
     <canvas id="particleCanvas"></canvas>
+
+    <!-- Cream ASCII Loader -->
+    <div id="dashboardLoader" class="ascii-loader" aria-live="polite">
+        <div class="ascii-loader-inner">
+            <div class="ascii-noise-layer" aria-hidden="true"></div>
+            <div class="loader-scan-bar" aria-hidden="true"></div>
+            <pre class="ascii-art" aria-hidden="true">
+/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\
+|  SIGNAL CALIBRATION CHAMBER  |
+|\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\|
+|==|==|==|==|==|==|==|==|==|==|==|==|==|==|
+|  IQ  SYNAPTIC  ALIGNMENT  CORE  |
+\_/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\_/ 
+            </pre>
+            <pre id="loaderNoiseMatrix" class="ascii-noise-text" aria-hidden="true">
+..::..==--..::..==--..::..==--..::..==--
+/-=/\-=-/\-=/-=/\-=-/\-=/-=/\-=-/\-=/-=
+::..==--..::..==--..::..==--..::..==--.
+/\-=/-=/\-=-/\-=/-=/\-=-/\-=/-=/\-=-/\-
+            </pre>
+            <div class="loader-message" id="dashboardLoaderMessage">CALIBRATING IQ RANKERS...</div>
+            <div class="loader-caption">cream noise uplink — dashboard boot</div>
+        </div>
+    </div>
 
     <!-- ============ LOGIN SCREEN ============ -->
     <div id="loginScreen" class="screen active">
@@ -27,35 +53,169 @@
                 <span class="title-line">MEMORY</span>
                 <span class="title-line accent">BATTLE ROYALE</span>
             </h1>
-            <p class="subtitle">SINGLE PLAYER CHALLENGE</p>
-            <div class="login-form">
+            <p class="subtitle">MULTIPLAYER EDITION</p>
+            
+            <!-- Login Form -->
+            <div id="loginForm" class="login-form">
                 <div class="input-group">
-                    <input type="text" id="usernameInput" placeholder="ENTER WARRIOR NAME" maxlength="15"
-                        autocomplete="off">
+                    <input type="text" id="loginUsername" placeholder="USERNAME" autocomplete="username">
+                    <div class="input-glow"></div>
+                </div>
+                <div class="input-group">
+                    <input type="password" id="loginPassword" placeholder="PASSWORD" autocomplete="current-password">
                     <div class="input-glow"></div>
                 </div>
                 <div class="login-buttons">
-                    <button id="joinBtn" class="btn-primary" onclick="game.startGame()">
-                        <span class="btn-text">🎮 ENTER ARENA</span>
+                    <button class="btn-primary" onclick="game.login()">
+                        <span class="btn-text">🎮 LOGIN</span>
                     </button>
-                    <button id="learnBtn" class="btn-primary btn-learn" onclick="game.showLearnInput()">
-                        <span class="btn-text">🧠 LEARN MODE</span>
+                    <button class="btn-secondary" onclick="game.showRegisterForm()">
+                        <span class="btn-text">CREATE ACCOUNT</span>
                     </button>
                 </div>
             </div>
+            
+            <!-- Register Form (hidden by default) -->
+            <div id="registerForm" class="login-form" style="display:none;">
+                <div class="input-group">
+                    <input type="text" id="registerUsername" placeholder="USERNAME (3-20 chars)" maxlength="20" autocomplete="username">
+                    <div class="input-glow"></div>
+                </div>
+                <div class="input-group">
+                    <input type="email" id="registerEmail" placeholder="EMAIL" autocomplete="email">
+                    <div class="input-glow"></div>
+                </div>
+                <div class="input-group">
+                    <input type="password" id="registerPassword" placeholder="PASSWORD (min 6 chars)" autocomplete="new-password">
+                    <div class="input-glow"></div>
+                </div>
+                <div class="login-buttons">
+                    <button class="btn-primary" onclick="game.register()">
+                        <span class="btn-text">✨ REGISTER</span>
+                    </button>
+                    <button class="btn-secondary" onclick="game.showLoginForm()">
+                        <span class="btn-text">BACK TO LOGIN</span>
+                    </button>
+                </div>
+            </div>
+            
+            <div id="loginError" class="error-message" style="display:none;"></div>
+            
             <div class="login-stats">
                 <div class="stat-item">
                     <span class="stat-value">3</span>
                     <span class="stat-label">CHALLENGE TYPES</span>
                 </div>
                 <div class="stat-item">
-                    <span class="stat-value">10</span>
-                    <span class="stat-label">ROUNDS</span>
+                    <span class="stat-value">🏆</span>
+                    <span class="stat-label">IQ RANKERS</span>
                 </div>
                 <div class="stat-item">
                     <span class="stat-value">∞</span>
                     <span class="stat-label">DIFFICULTY</span>
                 </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- ============ MAIN MENU SCREEN ============ -->
+    <div id="mainMenuScreen" class="screen">
+        <div class="menu-container">
+            <h1 class="game-title">
+                <span class="title-line">MEMORY</span>
+                <span class="title-line accent">BATTLE ROYALE</span>
+            </h1>
+            <p class="subtitle" id="welcomePlayer">WELCOME, WARRIOR</p>
+            
+            <!-- Player Stats Dashboard -->
+            <div class="stats-dashboard">
+                <div class="stats-row">
+                    <div class="stat-card">
+                        <div class="stat-icon">⚡</div>
+                        <div class="stat-content">
+                            <div class="stat-label">GLOBAL ELO</div>
+                            <div class="stat-value" id="globalElo">1200</div>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">🎮</div>
+                        <div class="stat-content">
+                            <div class="stat-label">GAMES PLAYED</div>
+                            <div class="stat-value" id="gamesPlayed">0</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Stats Summary Cards -->
+            <div class="stats-summary">
+                <div class="summary-card">
+                    <div class="summary-icon">🔷</div>
+                    <div class="summary-content">
+                        <div class="summary-title">PATTERN</div>
+                        <div class="summary-elo" id="patternElo">1200</div>
+                        <div class="summary-trend" id="patternTrend">--</div>
+                    </div>
+                </div>
+                <div class="summary-card">
+                    <div class="summary-icon">🔢</div>
+                    <div class="summary-content">
+                        <div class="summary-title">SEQUENCE</div>
+                        <div class="summary-elo" id="sequenceElo">1200</div>
+                        <div class="summary-trend" id="sequenceTrend">--</div>
+                    </div>
+                </div>
+                <div class="summary-card">
+                    <div class="summary-icon">📍</div>
+                    <div class="summary-content">
+                        <div class="summary-title">SPATIAL</div>
+                        <div class="summary-elo" id="spatialElo">1200</div>
+                        <div class="summary-trend" id="spatialTrend">--</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Performance Graphs -->
+            <div class="graphs-section">
+                <h3 class="section-title">📊 PERFORMANCE ANALYTICS</h3>
+                <div class="graphs-grid">
+                    <div class="graph-container">
+                        <h4>Pattern Performance</h4>
+                        <canvas id="patternChart"></canvas>
+                    </div>
+                    <div class="graph-container">
+                        <h4>Sequence Performance</h4>
+                        <canvas id="sequenceChart"></canvas>
+                    </div>
+                    <div class="graph-container">
+                        <h4>Spatial Performance</h4>
+                        <canvas id="spatialChart"></canvas>
+                    </div>
+                    <div class="graph-container graph-wide">
+                        <h4>ELO Rating History</h4>
+                        <canvas id="eloChart"></canvas>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Leaderboard -->
+            <div class="leaderboard-section">
+                <h3 class="section-title">🏆 GLOBAL LEADERBOARD</h3>
+                <div id="leaderboardList" class="leaderboard-list">
+                    <div class="loading-text">Loading...</div>
+                </div>
+            </div>
+            
+            <div class="menu-buttons">
+                <button class="btn-primary btn-large" onclick="game.startAutoPlayMode()">
+                    <span class="btn-text">▶️ START PLAYING</span>
+                </button>
+                <button class="btn-secondary btn-learn" onclick="game.showLearnInput()">
+                    <span class="btn-text">🧠 LEARN MODE</span>
+                </button>
+                <button class="btn-secondary" onclick="game.logout()">
+                    <span class="btn-text">LOGOUT</span>
+                </button>
             </div>
         </div>
     </div>
@@ -292,7 +452,7 @@
                 <button class="btn-secondary" onclick="game.toggleFullscreen()">⛶ FULLSCREEN</button>
             </div>
             <div class="vis-iframe-wrapper" id="visIframeWrapper">
-                <iframe id="visIframe" class="vis-iframe" sandbox="allow-scripts allow-same-origin"></iframe>
+                <iframe id="visIframe" class="vis-iframe"></iframe>
             </div>
         </div>
     </div>

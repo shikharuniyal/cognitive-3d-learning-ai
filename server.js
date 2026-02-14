@@ -2,9 +2,24 @@ const express = require('express');
 const path = require('path');
 const https = require('https');
 const fs = require('fs');
+const cors = require('cors');
 
 const app = express();
 app.use(express.json({ limit: '1mb' }));
+app.use(cors()); // Enable CORS for frontend
+
+// Database connection (lazy load)
+const { connectDB } = require('./lib/db');
+
+// Import routes
+const authRoutes = require('./routes/auth');
+const gameRoutes = require('./routes/game');
+const leaderboardRoutes = require('./routes/leaderboard');
+
+// API Routes
+app.use('/api/auth', authRoutes);
+app.use('/api/game', gameRoutes);
+app.use('/api/leaderboard', leaderboardRoutes);
 
 // Serve static files from 'public' directory
 app.use(express.static(path.join(__dirname, 'public')));
@@ -21,15 +36,18 @@ require('dotenv').config();
 // Gemini API Configuration
 // ============================================
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-if (!GEMINI_API_KEY) {
-    console.error('Error: GEMINI_API_KEY is not set in .env file');
-    process.exit(1);
+const GEMINI_ENABLED = Boolean(GEMINI_API_KEY && GEMINI_API_KEY !== 'placeholder_key');
+if (!GEMINI_ENABLED) {
+    console.warn('Warning: GEMINI_API_KEY is not set. Running in DEV mode — learning API will return sample content. Set GEMINI_API_KEY to enable real generation.');
 }
-const GEMINI_MODEL = 'gemini-flash-latest';
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
+const GEMINI_MODEL = 'gemini-2.5-flash';
+const GEMINI_URL = GEMINI_ENABLED ? `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}` : null;
 
 function callGemini(prompt) {
     return new Promise((resolve, reject) => {
+        if (!GEMINI_ENABLED) {
+            return reject(new Error('Gemini API key not configured'));
+        }
         const body = JSON.stringify({
             contents: [{ parts: [{ text: prompt }] }],
             generationConfig: {
@@ -53,9 +71,12 @@ function callGemini(prompt) {
             let data = '';
             res.on('data', (chunk) => { data += chunk; });
             res.on('end', () => {
+                console.log('Gemini API Response Status:', res.statusCode);
+                console.log('Gemini API Response:', data.substring(0, 500));
                 try {
                     const parsed = JSON.parse(data);
                     if (parsed.error) {
+                        console.error('Gemini API Error Details:', JSON.stringify(parsed.error, null, 2));
                         reject(new Error(parsed.error.message || 'Gemini API error'));
                         return;
                     }
@@ -65,6 +86,7 @@ function callGemini(prompt) {
                     }
                     resolve(text);
                 } catch (e) {
+                    console.error('Parse error:', e.message, 'Raw data:', data);
                     reject(new Error('Failed to parse Gemini response'));
                 }
             });
@@ -89,6 +111,17 @@ app.post('/api/learn', async (req, res) => {
     console.log(`\n🧠 Learning request: "${cleanTopic}"`);
 
     try {
+        if (!GEMINI_ENABLED) {
+            // DEV fallback: return a sample generated page if available
+            const sampleFiles = fs.readdirSync(generatedDir).filter(f => f.endsWith('.html'));
+            const sampleUrl = sampleFiles.length > 0 ? `/generated/${sampleFiles[0]}` : null;
+            return res.json({
+                needs3d: false,
+                reason: 'Running in DEV mode — Gemini API disabled. This is a static sample response.',
+                title: cleanTopic,
+                url: sampleUrl
+            });
+        }
         // ---- Step 1: Determine if 3D visualization is needed ----
         console.log('  Step 1: Classifying topic...');
         const classifyPrompt = `You are an expert educator. Given the topic: "${cleanTopic}", determine if it would benefit from a 3D interactive visualization for learning.
@@ -188,7 +221,24 @@ RESPOND WITH ONLY THE COMPLETE HTML CODE. No markdown fences, no explanation bef
 
     } catch (error) {
         console.error('  ❗ Error in learning pipeline:', error.message);
-        return res.status(500).json({ error: 'An error occurred. Please try again.' });
+        
+        const errorMsg = (error.message || '').toLowerCase();
+        
+        // Check for quota exceeded error
+        if (errorMsg.includes('quota') || errorMsg.includes('exceeded')) {
+            return res.status(429).json({ 
+                error: 'API quota exceeded. The free tier limit has been reached. Please try again later or upgrade your API key.' 
+            });
+        }
+        
+        // Check for rate limit error
+        if (errorMsg.includes('rate limit')) {
+            return res.status(429).json({ 
+                error: 'Rate limit exceeded. Please wait a moment and try again.' 
+            });
+        }
+        
+        return res.status(500).json({ error: 'An error occurred while generating the visualization. Please try again later.' });
     }
 });
 

@@ -1,14 +1,41 @@
 /* ========================================
-   MEMORY BATTLE ROYALE — SINGLE PLAYER
+   MEMORY BATTLE ROYALE — MULTIPLAYER
    Client-side game engine
    ======================================== */
 
+const API_BASE = window.location.origin;
 const TOTAL_ROUNDS = 10;
 const ROUND_DURATION = 15; // seconds
 
 class MemoryGame {
     constructor() {
         this.username = '';
+        this.userId = null;
+        this.token = null;
+        this.selectedGameType = null;
+        this.sessionId = null;
+        this.predictedScore = 0;
+        this.currentElo = 1200;
+        
+        // Auto-rotation state
+        this.gameTypeRotation = ['pattern', 'sequence', 'spatial'];
+        this.currentGameTypeIndex = 0;
+        this.autoPlayMode = false;
+        
+        // Charts
+        this.charts = {
+            pattern: null,
+            sequence: null,
+            spatial: null,
+            elo: null
+        };
+        this.performanceData = {
+            pattern: [],
+            sequence: [],
+            spatial: [],
+            eloHistory: []
+        };
+        
         this.currentRound = 0;
         this.totalScore = 0;
         this.streak = 0;
@@ -16,6 +43,7 @@ class MemoryGame {
         this.roundScores = [];
         this.roundTypes = [];
         this.roundSpeeds = [];
+        this.roundStartTimes = []; // Track round start times
 
         // Current round state
         this.roundType = null;
@@ -37,8 +65,658 @@ class MemoryGame {
 
         // Audio context
         this.audioCtx = null;
+        this.loaderNoiseInterval = null;
 
         this.initParticles();
+        this.initKeyboardHandlers();
+        
+        // Show login screen by default
+        this.showScreen('loginScreen');
+        this.showLoginForm();
+        
+        // Then check for existing auth
+        this.checkAuth();
+    }
+    
+    /* =====================
+       AUTHENTICATION
+       ===================== */
+    checkAuth() {
+        const token = localStorage.getItem('authToken');
+        if (token) {
+            this.token = token;
+            // Try to auto-login, but don't block page if it fails
+            this.verifyToken().catch(() => {
+                // Silently fail and show login screen
+                this.token = null;
+                localStorage.removeItem('authToken');
+                this.showScreen('loginScreen');
+                this.showLoginForm();
+            });
+        }
+    }
+    
+    async verifyToken() {
+        if (!this.token) return;
+        
+        try {
+            const res = await fetch(`${API_BASE}/api/game/stats/pattern`, {
+                headers: { 'Authorization': `Bearer ${this.token}` }
+            });
+            
+            if (res.ok) {
+                const data = await res.json();
+                // Extract username from token or use placeholder
+                this.username = 'Player'; // Will be set properly on login
+                await this.showMainMenu();
+            } else {
+                throw new Error('Invalid token');
+            }
+        } catch (error) {
+            localStorage.removeItem('authToken');
+            this.token = null;
+            throw error;
+        }
+    }
+    
+    showLoginForm() {
+        document.getElementById('loginForm').style.display = 'block';
+        document.getElementById('registerForm').style.display = 'none';
+        document.getElementById('loginError').style.display = 'none';
+    }
+    
+    showRegisterForm() {
+        document.getElementById('loginForm').style.display = 'none';
+        document.getElementById('registerForm').style.display = 'block';
+        document.getElementById('loginError').style.display = 'none';
+    }
+    
+    showError(message) {
+        const errorEl = document.getElementById('loginError');
+        errorEl.textContent = message;
+        errorEl.style.display = 'block';
+        setTimeout(() => errorEl.style.display = 'none', 5000);
+    }
+    
+    async register() {
+        const username = document.getElementById('registerUsername').value.trim();
+        const email = document.getElementById('registerEmail').value.trim();
+        const password = document.getElementById('registerPassword').value;
+        
+        if (!username || !email || !password) {
+            this.showError('All fields are required');
+            return;
+        }
+        
+        if (password.length < 6) {
+            this.showError('Password must be at least 6 characters');
+            return;
+        }
+        
+        try {
+            const res = await fetch(`${API_BASE}/api/auth/register`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, email, password })
+            });
+            
+            const data = await res.json();
+            
+            if (!res.ok) {
+                this.showError(data.error || 'Registration failed');
+                return;
+            }
+            
+            this.token = data.token;
+            this.username = data.user.username;
+            this.userId = data.user.id;
+            localStorage.setItem('authToken', this.token);
+            
+            await this.showMainMenu();
+        } catch (error) {
+            console.error('Register error:', error);
+            this.showError('Network error. Please try again.');
+        }
+    }
+    
+    async login() {
+        const username = document.getElementById('loginUsername').value.trim();
+        const password = document.getElementById('loginPassword').value;
+        
+        if (!username || !password) {
+            this.showError('Username and password required');
+            return;
+        }
+        
+        try {
+            const res = await fetch(`${API_BASE}/api/auth/login`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+            
+            const data = await res.json();
+            
+            if (!res.ok) {
+                this.showError(data.error || 'Login failed');
+                return;
+            }
+            
+            this.token = data.token;
+            this.username = data.user.username;
+            this.userId = data.user.id;
+            localStorage.setItem('authToken', this.token);
+            
+            await this.showMainMenu();
+        } catch (error) {
+            console.error('Login error:', error);
+            this.showError('Network error. Please try again.');
+        }
+    }
+    
+    logout() {
+        localStorage.removeItem('authToken');
+        this.token = null;
+        this.username = '';
+        this.userId = null;
+        this.autoPlayMode = false;
+        this.showScreen('loginScreen');
+        this.showLoginForm();
+    }
+    
+    /* =====================
+       KEYBOARD HANDLERS
+       ===================== */
+    initKeyboardHandlers() {
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && this.phase !== 'idle') {
+                this.exitToMenu();
+            }
+        });
+    }
+    
+    async exitToMenu() {
+        // Save progress if there are any completed rounds
+        console.log('ESC pressed - Checking save conditions:', {
+            hasToken: !!this.token,
+            hasSessionId: !!this.sessionId,
+            sessionId: this.sessionId,
+            roundsPlayed: this.roundScores.length
+        });
+        
+        if (this.roundScores.length === 0) {
+            console.log('⚠️ No rounds completed, skipping save');
+        } else if (!this.token) {
+            console.error('❌ Cannot save: No auth token');
+        } else if (!this.sessionId) {
+            console.error('❌ Cannot save: No session ID');
+        } else {
+            console.log(`✅ Saving ${this.roundScores.length} rounds before exit...`);
+            await this.submitScore(true); // Silent save
+        }
+        
+        // Stop any running timers
+        if (this.timerInterval) {
+            clearInterval(this.timerInterval);
+            this.timerInterval = null;
+        }
+        
+        // Reset game state
+        this.phase = 'idle';
+        this.autoPlayMode = false;
+        
+        // Return to main menu and refresh
+        await this.showMainMenu();
+    }
+    
+    /* =====================
+       AUTO-PLAY MODE
+       ===================== */
+    startAutoPlayMode() {
+        this.autoPlayMode = true;
+        this.currentGameTypeIndex = 0;
+        this.selectNextGameType();
+    }
+    
+    selectNextGameType() {
+        // Cycle through game types
+        this.selectedGameType = this.gameTypeRotation[this.currentGameTypeIndex];
+        this.currentGameTypeIndex = (this.currentGameTypeIndex + 1) % this.gameTypeRotation.length;
+        
+        // Start the game
+        this.selectGameType(this.selectedGameType);
+    }
+    
+    async showMainMenu() {
+        const startTime = (typeof performance !== 'undefined' && performance.now)
+            ? performance.now()
+            : Date.now();
+        this.showDashboardLoader('CALIBRATING IQ RANKERS...');
+        this.showScreen('mainMenuScreen');
+        document.getElementById('welcomePlayer').textContent = `WELCOME, ${this.username.toUpperCase()}`;
+
+        try {
+            await this.fetchUserStats();
+            await this.fetchLeaderboard();
+            this.renderCharts();
+        } catch (error) {
+            console.error('Failed to prepare dashboard:', error);
+        } finally {
+            const elapsed = ((typeof performance !== 'undefined' && performance.now)
+                ? performance.now()
+                : Date.now()) - startTime;
+            const minDuration = 1200;
+            if (elapsed < minDuration) {
+                await new Promise((resolve) => setTimeout(resolve, minDuration - elapsed));
+            }
+            this.hideDashboardLoader();
+        }
+    }
+
+    showDashboardLoader(message = 'CALIBRATING IQ RANKERS...') {
+        const loader = document.getElementById('dashboardLoader');
+        if (!loader) return;
+
+        const messageEl = document.getElementById('dashboardLoaderMessage');
+        if (messageEl) {
+            messageEl.textContent = message;
+        }
+
+        const noiseEl = document.getElementById('loaderNoiseMatrix');
+        if (noiseEl) {
+            noiseEl.textContent = this.generateAsciiNoise();
+            if (this.loaderNoiseInterval) {
+                clearInterval(this.loaderNoiseInterval);
+            }
+            this.loaderNoiseInterval = setInterval(() => {
+                noiseEl.textContent = this.generateAsciiNoise();
+            }, 120);
+        }
+
+        loader.classList.add('active');
+    }
+
+    hideDashboardLoader() {
+        const loader = document.getElementById('dashboardLoader');
+        if (!loader) return;
+
+        loader.classList.remove('active');
+        if (this.loaderNoiseInterval) {
+            clearInterval(this.loaderNoiseInterval);
+            this.loaderNoiseInterval = null;
+        }
+    }
+
+    generateAsciiNoise(lines = 6, width = 32) {
+        const chars = ['.', ':', '*', '+', '=', '-', '_', '|', '/', '\\'];
+        let result = '';
+        for (let i = 0; i < lines; i++) {
+            let line = '';
+            for (let j = 0; j < width; j++) {
+                line += chars[Math.floor(Math.random() * chars.length)];
+            }
+            result += line + (i < lines - 1 ? '\n' : '');
+        }
+        return result;
+    }
+    
+    async fetchUserStats() {
+        if (!this.token) return;
+        
+        try {
+            // Fetch stats for all game types
+            const gameTypes = ['pattern', 'sequence', 'spatial'];
+            
+            for (const gameType of gameTypes) {
+                const res = await fetch(`${API_BASE}/api/game/stats/${gameType}`, {
+                    headers: { 'Authorization': `Bearer ${this.token}` }
+                });
+                
+                if (res.ok) {
+                    const stats = await res.json();
+                    this.updateGameTypeStats(gameType, stats);
+                    
+                    // Store performance data for charts
+                    if (stats.sessionHistory && stats.sessionHistory.length > 0) {
+                        this.performanceData[gameType] = stats.sessionHistory
+                            .slice(-20) // Last 20 games
+                            .map(session => ({
+                                score: session.score,
+                                elo: session.finalElo,
+                                date: new Date(session.completedAt)
+                            }));
+                        
+                        // Collect ELO history (combined from all game types)
+                        stats.sessionHistory.slice(-10).forEach(session => {
+                            this.performanceData.eloHistory.push({
+                                gameType,
+                                elo: session.finalElo,
+                                date: new Date(session.completedAt)
+                            });
+                        });
+                    }
+                }
+            }
+            
+            // Sort ELO history by date
+            this.performanceData.eloHistory.sort((a, b) => a.date - b.date);
+            
+            // Update global stats
+            // Calculate total games from all types
+            const totalGames = this.performanceData.pattern.length + 
+                             this.performanceData.sequence.length + 
+                             this.performanceData.spatial.length;
+            document.getElementById('gamesPlayed').textContent = totalGames;
+            
+        } catch (error) {
+            console.error('Failed to fetch stats:', error);
+        }
+    }
+    
+    updateGameTypeStats(gameType, stats) {
+        // Update ELO
+        document.getElementById(`${gameType}Elo`).textContent = stats.elo || 1200;
+        
+        // Update trend with color classes
+        const trendEl = document.getElementById(`${gameType}Trend`);
+        if (stats.recentTrend) {
+            trendEl.textContent = stats.recentTrend.toUpperCase();
+            trendEl.className = 'summary-trend ' + stats.recentTrend;
+        } else {
+            trendEl.textContent = '--';
+            trendEl.className = 'summary-trend';
+        }
+        
+        // Update global ELO (use highest across all game types)
+        const currentGlobalElo = parseInt(document.getElementById('globalElo').textContent) || 1200;
+        if (stats.elo > currentGlobalElo) {
+            document.getElementById('globalElo').textContent = stats.elo;
+        }
+    }
+    
+    /* =====================
+       CHARTS & ANALYTICS
+       ===================== */
+    renderCharts() {
+        this.renderPerformanceChart('pattern', 'patternChart', 'Pattern Recall');
+        this.renderPerformanceChart('sequence', 'sequenceChart', 'Sequence Memory');
+        this.renderPerformanceChart('spatial', 'spatialChart', 'Spatial Memory');
+        this.renderEloChart();
+    }
+    
+    renderPerformanceChart(gameType, canvasId, label) {
+        const ctx = document.getElementById(canvasId);
+        if (!ctx) return;
+        
+        // Destroy existing chart
+        if (this.charts[gameType]) {
+            this.charts[gameType].destroy();
+        }
+        
+        const data = this.performanceData[gameType] || [];
+        
+        // If no data, show placeholder
+        if (data.length === 0) {
+            this.charts[gameType] = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: ['No data yet'],
+                    datasets: [{
+                        label: 'Score',
+                        data: [0],
+                        borderColor: '#a855f7',
+                        backgroundColor: 'rgba(168, 85, 247, 0.1)',
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        y: { 
+                            beginAtZero: true,
+                            ticks: { color: '#00f3ff' },
+                            grid: { color: 'rgba(0, 243, 255, 0.1)' }
+                        },
+                        x: {
+                            ticks: { color: '#00f3ff' },
+                            grid: { color: 'rgba(0, 243, 255, 0.1)' }
+                        }
+                    }
+                }
+            });
+            return;
+        }
+        
+        // Calculate dynamic Y-axis range with buffer
+        const scores = data.map(d => d.score);
+        const minScore = Math.min(...scores);
+        const maxScore = Math.max(...scores);
+        const buffer = (maxScore - minScore) * 0.2 || 100; // 20% buffer or 100 if all same
+        
+        this.charts[gameType] = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: data.map((d, i) => `Game ${i + 1}`),
+                datasets: [{
+                    label: 'Score',
+                    data: scores,
+                    borderColor: '#a855f7',
+                    backgroundColor: 'rgba(168, 85, 247, 0.2)',
+                    borderWidth: 3,
+                    tension: 0.4,
+                    fill: true,
+                    pointBackgroundColor: '#00f3ff',
+                    pointBorderColor: '#fff',
+                    pointBorderWidth: 2,
+                    pointRadius: 4,
+                    pointHoverRadius: 6
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: 'rgba(10, 10, 26, 0.9)',
+                        titleColor: '#00f3ff',
+                        bodyColor: '#fff',
+                        borderColor: '#a855f7',
+                        borderWidth: 2
+                    }
+                },
+                scales: {
+                    y: {
+                        min: Math.max(0, minScore - buffer),
+                        max: maxScore + buffer,
+                        ticks: { color: '#00f3ff', font: { size: 11 } },
+                        grid: { color: 'rgba(0, 243, 255, 0.1)' }
+                    },
+                    x: {
+                        ticks: { color: '#00f3ff', font: { size: 10 }, maxRotation: 0 },
+                        grid: { color: 'rgba(0, 243, 255, 0.1)' }
+                    }
+                }
+            }
+        });
+    }
+    
+    renderEloChart() {
+        const ctx = document.getElementById('eloChart');
+        if (!ctx) return;
+        
+        // Destroy existing chart
+        if (this.charts.elo) {
+            this.charts.elo.destroy();
+        }
+        
+        const data = this.performanceData.eloHistory || [];
+        
+        if (data.length === 0) {
+            this.charts.elo = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: ['No games yet'],
+                    datasets: [{
+                        label: 'ELO',
+                        data: [1200],
+                        borderColor: '#00f3ff'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: { legend: { display: false } }
+                }
+            });
+            return;
+        }
+        
+        // Calculate dynamic range
+        const elos = data.map(d => d.elo);
+        const minElo = Math.min(...elos);
+        const maxElo = Math.max(...elos);
+        const buffer = (maxElo - minElo) * 0.1 || 50;
+        
+        this.charts.elo = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: data.map((d, i) => `${d.gameType[0].toUpperCase()}${i + 1}`),
+                datasets: [{
+                    label: 'ELO Rating',
+                    data: elos,
+                    borderColor: '#00f3ff',
+                    backgroundColor: 'rgba(0, 243, 255, 0.1)',
+                    borderWidth: 3,
+                    tension: 0.4,
+                    fill: true,
+                    pointBackgroundColor: '#a855f7',
+                    pointBorderColor: '#fff',
+                    pointBorderWidth: 2,
+                    pointRadius: 5,
+                    pointHoverRadius: 7
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: {
+                        display: true,
+                        labels: { color: '#00f3ff', font: { size: 13 } }
+                    },
+                    tooltip: {
+                        backgroundColor: 'rgba(10, 10, 26, 0.9)',
+                        titleColor: '#00f3ff',
+                        bodyColor: '#fff',
+                        borderColor: '#00f3ff',
+                        borderWidth: 2
+                    }
+                },
+                scales: {
+                    y: {
+                        min: Math.max(1000, minElo - buffer),
+                        max: maxElo + buffer,
+                        ticks: { color: '#00f3ff', font: { size: 12 } },
+                        grid: { color: 'rgba(0, 243, 255, 0.1)' }
+                    },
+                    x: {
+                        ticks: { color: '#00f3ff', font: { size: 10 } },
+                        grid: { color: 'rgba(0, 243, 255, 0.1)' }
+                    }
+                }
+            }
+        });
+    }
+    
+    /* =====================
+       LEADERBOARD
+       ===================== */
+    async fetchLeaderboard() {
+        try {
+            const res = await fetch(`${API_BASE}/api/leaderboard/global`, {
+                headers: { 'Authorization': `Bearer ${this.token}` }
+            });
+            
+            if (!res.ok) return;
+            
+            const data = await res.json();
+            this.renderLeaderboard(data.leaderboard || []);
+        } catch (error) {
+            console.error('Failed to fetch leaderboard:', error);
+        }
+    }
+    
+    renderLeaderboard(players) {
+        const container = document.getElementById('leaderboardList');
+        if (!container) return;
+        
+        if (players.length === 0) {
+            container.innerHTML = '<div class="loading-text">No players yet</div>';
+            return;
+        }
+        
+        container.innerHTML = players.slice(0, 10).map((player, index) => {
+            const rankClass = index === 0 ? 'top1' : index === 1 ? 'top2' : index === 2 ? 'top3' : '';
+            const isCurrentUser = player.username === this.username;
+            const highlightClass = isCurrentUser ? 'style="background: rgba(0, 243, 255, 0.2);"' : '';
+            
+            return `
+                <div class="leaderboard-item" ${highlightClass}>
+                    <div class="leaderboard-rank ${rankClass}">#${index + 1}</div>
+                    <div class="leaderboard-username">${player.username}${isCurrentUser ? ' (You)' : ''}</div>
+                    <div class="leaderboard-elo">${player.globalElo || player.elo || 1200}</div>
+                    <div class="leaderboard-games">${player.bestGameType || 'N/A'}</div>
+                </div>
+            `;
+        }).join('');
+    }
+    
+    async selectGameType(gameType) {
+        this.selectedGameType = gameType; // Store for reference but rounds will rotate
+        
+        // Generate a base session ID (will be prefixed with actual game type during submit)
+        const userId = this.token ? JSON.parse(atob(this.token.split('.')[1])).userId : 'guest';
+        const timestamp = Date.now();
+        this.sessionId = `${userId}_${timestamp}`;
+        
+        // Set default prediction (will be updated per game type)
+        this.predictedScore = 500;
+        this.currentElo = 1200;
+        
+        console.log('✅ Mixed-type game session started:', {
+            sessionId: this.sessionId,
+            mixedTypes: ['pattern', 'sequence', 'spatial']
+        });
+        
+        // Show prediction notification
+        this.showPredictionOverlay();
+        
+        setTimeout(() => this.startGame(), 3000);
+    }
+    
+    showPredictionOverlay() {
+        const overlay = document.createElement('div');
+        overlay.className = 'prediction-overlay';
+        overlay.innerHTML = `
+            <div class="prediction-card">
+                <div class="prediction-title">AI PREDICTION</div>
+                <div class="prediction-score">${Math.round(this.predictedScore)}</div>
+                <div class="prediction-label">Expected Score</div>
+                <div class="prediction-elo">Current ELO: ${this.currentElo}</div>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+        
+        setTimeout(() => overlay.classList.add('show'), 100);
+        setTimeout(() => {
+            overlay.classList.remove('show');
+            setTimeout(() => overlay.remove(), 500);
+        }, 2500);
     }
 
     /* =====================
@@ -53,8 +731,8 @@ class MemoryGame {
        GAME FLOW
        ===================== */
     startGame() {
-        const input = document.getElementById('usernameInput');
-        this.username = (input.value.trim() || 'Warrior').toUpperCase();
+        // Reset game state
+        console.log('🎮 Starting new game session:', this.sessionId);
         this.currentRound = 0;
         this.totalScore = 0;
         this.streak = 0;
@@ -62,6 +740,7 @@ class MemoryGame {
         this.roundScores = [];
         this.roundTypes = [];
         this.roundSpeeds = [];
+        this.roundStartTimes = [];
 
         this.initAudio();
         this.showCountdown();
@@ -94,6 +773,9 @@ class MemoryGame {
             this.showGameOver();
             return;
         }
+
+        // Track round start time
+        this.roundStartTimes.push(new Date());
 
         // Determine round type
         const types = ['pattern', 'sequence', 'spatial'];
@@ -803,7 +1485,7 @@ class MemoryGame {
     /* =====================
        GAME OVER
        ===================== */
-    showGameOver() {
+    async showGameOver() {
         this.showScreen('gameOverScreen');
         this.playSound('victory');
         this.spawnConfetti();
@@ -819,6 +1501,24 @@ class MemoryGame {
         document.getElementById('finalAvgSpeed').textContent = avgSpeed.toFixed(1) + 's';
         document.getElementById('finalMaxStreak').textContent = this.maxStreak;
         document.getElementById('finalRounds').textContent = TOTAL_ROUNDS;
+
+        // Submit score to backend
+        console.log('Game Over - Checking save conditions:', {
+            hasToken: !!this.token,
+            hasSessionId: !!this.sessionId,
+            sessionId: this.sessionId,
+            roundsPlayed: this.roundScores.length,
+            totalScore: this.totalScore
+        });
+        
+        if (!this.token) {
+            console.error('❌ Cannot save: No auth token');
+        } else if (!this.sessionId) {
+            console.error('❌ Cannot save: No session ID');
+        } else {
+            console.log('✅ Conditions met, calling submitScore()');
+            await this.submitScore();
+        }
 
         // Round breakdown
         const list = document.getElementById('breakdownList');
@@ -842,10 +1542,185 @@ class MemoryGame {
                 row.querySelector('.breakdown-bar-fill').style.width = score + '%';
             }, 100 + idx * 120);
         });
+        
+        // If in auto-play mode, continue to next game type after 5 seconds
+        if (this.autoPlayMode) {
+            setTimeout(() => {
+                this.selectNextGameType();
+            }, 5000);
+        }
+    }
+    
+    async submitScore(silent = false) {
+        try {
+            console.log(`📤 Submitting game with ${this.roundScores.length} rounds across types:`, this.roundTypes);
+            
+            // Group rounds by game type
+            const gameTypes = ['pattern', 'sequence', 'spatial'];
+            const submissions = [];
+            
+            for (const gameType of gameTypes) {
+                // Filter rounds for this game type
+                const typeIndices = this.roundTypes
+                    .map((type, index) => type === gameType ? index : -1)
+                    .filter(index => index !== -1);
+                
+                if (typeIndices.length === 0) continue; // Skip if no rounds of this type
+                
+                const roundScores = typeIndices.map((index) => ({
+                    roundNumber: index + 1,
+                    score: this.roundScores[index],
+                    timeSpent: this.roundSpeeds[index] || 0,
+                    correct: this.roundScores[index] > 50,
+                    timestamp: this.roundStartTimes[index] || new Date()
+                }));
+                
+                const typeScore = typeIndices.reduce((sum, index) => sum + this.roundScores[index], 0);
+                
+                console.log(`  ${gameType}: ${roundScores.length} rounds, score=${typeScore}`);
+                
+                // Generate unique session ID for this game type
+                const uniqueSessionId = `${gameType}_${this.sessionId}_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+                
+                submissions.push({
+                    sessionId: uniqueSessionId,
+                    gameType: gameType,
+                    score: typeScore,
+                    roundData: {
+                        rounds: roundScores.length,
+                        maxStreak: this.maxStreak,
+                        roundScores: roundScores
+                    }
+                });
+            }
+            
+            console.log(`📤 Submitting ${submissions.length} separate game sessions...`);
+            
+            // Submit all game types
+            const results = [];
+            for (const submission of submissions) {
+                const res = await fetch(`${API_BASE}/api/game/submit`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${this.token}`
+                    },
+                    body: JSON.stringify(submission)
+                });
+                
+                if (res.ok) {
+                    const data = await res.json();
+                    results.push({ ...data, gameType: submission.gameType });
+                    console.log(`✅ ${submission.gameType} saved: ${data.score} points, ELO ${data.oldElo}→${data.newElo} (${data.eloChange >= 0 ? '+' : ''}${data.eloChange})`);
+                } else {
+                    const errorText = await res.text();
+                    console.error(`❌ ${submission.gameType} failed:`, res.status, errorText);
+                }
+            }
+            
+            // Refresh stats after all submissions
+            await this.fetchUserStats();
+            this.renderCharts();
+            
+            if (!silent && results.length > 0) {
+                // Show combined results
+                this.showCombinedResults(results);
+            } else {
+                console.log('Progress saved:', results);
+            }
+            
+        } catch (error) {
+            console.error('Submit score error:', error);
+        }
+    }
+    
+    showCombinedResults(results) {
+        const overlay = document.createElement('div');
+        overlay.className = 'score-results-overlay';
+        
+        const totalScore = results.reduce((sum, r) => sum + r.score, 0);
+        const totalEloChange = results.reduce((sum, r) => sum + r.eloChange, 0);
+        const eloChangeText = totalEloChange >= 0 ? `+${totalEloChange}` : `${totalEloChange}`;
+        const eloClass = totalEloChange >= 0 ? 'positive' : 'negative';
+        
+        const resultsHtml = results.map(r => `
+            <div class="result-item">
+                <div class="result-label">${r.gameType.toUpperCase()}</div>
+                <div class="result-value">${r.score} pts</div>
+                <div class="result-stat-value ${r.eloChange >= 0 ? 'positive' : 'negative'}">
+                    ELO ${r.eloChange >= 0 ? '+' : ''}${r.eloChange}
+                </div>
+            </div>
+        `).join('');
+        
+        overlay.innerHTML = `
+            <div class="score-results-card">
+                <div class="results-title">GAME RESULTS</div>
+                <div class="results-grid">
+                    <div class="result-item">
+                        <div class="result-label">Total Score</div>
+                        <div class="result-value">${totalScore}</div>
+                    </div>
+                    <div class="result-item ${eloClass}">
+                        <div class="result-label">Total ELO Change</div>
+                        <div class="result-value">${eloChangeText}</div>
+                    </div>
+                </div>
+                <div class="results-stats">
+                    ${resultsHtml}
+                </div>
+                <button class="btn-close" onclick="this.parentElement.parentElement.remove()">CONTINUE</button>
+            </div>
+        `;
+        
+        document.body.appendChild(overlay);
+        setTimeout(() => overlay.classList.add('show'), 10);
+    }
+    
+    showScoreResults(data) {
+        const overlay = document.createElement('div');
+        overlay.className = 'score-results-overlay';
+        
+        const eloChange = data.eloChange;
+        const eloChangeText = eloChange >= 0 ? `+${eloChange}` : `${eloChange}`;
+        const eloClass = eloChange >= 0 ? 'positive' : 'negative';
+        
+        overlay.innerHTML = `
+            <div class="score-results-card">
+                <div class="results-title">GAME RESULTS</div>
+                <div class="results-grid">
+                    <div class="result-item">
+                        <div class="result-label">Your Score</div>
+                        <div class="result-value">${data.score}</div>
+                    </div>
+                    <div class="result-item">
+                        <div class="result-label">Predicted</div>
+                        <div class="result-value">${Math.round(this.predictedScore)}</div>
+                    </div>
+                    <div class="result-item ${eloClass}">
+                        <div class="result-label">ELO Change</div>
+                        <div class="result-value">${eloChangeText}</div>
+                    </div>
+                    <div class="result-item">
+                        <div class="result-label">New ELO</div>
+                        <div class="result-value">${data.newElo}</div>
+                    </div>
+                </div>
+                <div class="results-stats">
+                    <div class="stat-mini">Games Played: ${data.stats.gamesPlayed}</div>
+                    <div class="stat-mini">Avg Last 10: ${data.stats.avgLast10}</div>
+                    <div class="stat-mini">Trend: ${data.stats.recentTrend.toUpperCase()}</div>
+                </div>
+                <button class="btn-close" onclick="this.parentElement.parentElement.remove()">CLOSE</button>
+            </div>
+        `;
+        
+        document.body.appendChild(overlay);
+        setTimeout(() => overlay.classList.add('show'), 100);
     }
 
-    restart() {
-        this.showScreen('loginScreen');
+    async restart() {
+        await this.showMainMenu();
         // Clean up confetti
         document.querySelectorAll('.confetti-piece').forEach(c => c.remove());
     }
@@ -1125,7 +2000,14 @@ class MemoryGame {
             await new Promise(r => setTimeout(r, 500));
 
             if (data.error) {
-                alert('Error: ' + data.error);
+                // Show detailed error message
+                const errorMsg = data.error.includes('quota') 
+                    ? `⚠️ API Quota Exceeded\n\nThe free tier limit (20 requests) has been reached.\n\nPlease try again later or contact the administrator to upgrade the API key.`
+                    : data.error.includes('rate limit')
+                    ? `⏱️ Rate Limit\n\nToo many requests. Please wait a moment and try again.`
+                    : `❌ Error\n\n${data.error}`;
+                
+                alert(errorMsg);
                 this.showLearnInput();
                 return;
             }
@@ -1139,7 +2021,7 @@ class MemoryGame {
         } catch (err) {
             console.error('Learning mode error:', err);
             stepTimers.forEach(t => clearTimeout(t));
-            alert('Failed to generate visualization. Please try again.');
+            alert('❌ Network Error\n\nFailed to connect to the server. Please check your connection and try again.');
             this.showLearnInput();
         }
     }
@@ -1175,12 +2057,37 @@ class MemoryGame {
 // Initialize game
 const game = new MemoryGame();
 
-// Allow Enter key to start game
-document.getElementById('usernameInput').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') game.startGame();
-});
-
-// Allow Enter key to submit topic
-document.getElementById('topicInput').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') game.submitTopic();
+// Add Enter key listeners for login/register forms
+document.addEventListener('DOMContentLoaded', () => {
+    const loginUsername = document.getElementById('loginUsername');
+    const loginPassword = document.getElementById('loginPassword');
+    const registerUsername = document.getElementById('registerUsername');
+    const registerEmail = document.getElementById('registerEmail');
+    const registerPassword = document.getElementById('registerPassword');
+    
+    if (loginUsername) {
+        loginUsername.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') game.login();
+        });
+    }
+    
+    if (loginPassword) {
+        loginPassword.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') game.login();
+        });
+    }
+    
+    if (registerPassword) {
+        registerPassword.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') game.register();
+        });
+    }
+    
+    // Topic input for learn mode
+    const topicInput = document.getElementById('topicInput');
+    if (topicInput) {
+        topicInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') game.submitTopic();
+        });
+    }
 });

@@ -3,3 +3,7 @@ node_modules
 mind_game_dist
 .DS_Store
 *.zip
+public/generated/*.html
+test-*.json
+temp_game.js
+.vercel
