@@ -26,13 +26,28 @@ app.use('/api/leaderboard', leaderboardRoutes);
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Ensure generated directory exists
-// Vercel serverless filesystem is read-only except /tmp
-const generatedDir = process.env.VERCEL
-    ? path.join('/tmp', 'generated')
-    : path.join(__dirname, 'public', 'generated');
-if (!fs.existsSync(generatedDir)) {
-    fs.mkdirSync(generatedDir, { recursive: true });
+// Vercel/serverless filesystems are read-only except /tmp
+function resolveGeneratedDir() {
+    const candidates = [
+        path.join(__dirname, 'public', 'generated'),
+        path.join('/tmp', 'generated')
+    ];
+
+    for (const dir of candidates) {
+        try {
+            if (!fs.existsSync(dir)) {
+                fs.mkdirSync(dir, { recursive: true });
+            }
+            return dir;
+        } catch (err) {
+            console.warn(`Generated dir unavailable: ${dir} (${err.code || err.message})`);
+        }
+    }
+
+    throw new Error('No writable directory available for generated content');
 }
+
+const generatedDir = resolveGeneratedDir();
 app.use('/generated', express.static(generatedDir));
 
 // ============================================
