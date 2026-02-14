@@ -3,6 +3,7 @@ const path = require('path');
 const https = require('https');
 const fs = require('fs');
 const cors = require('cors');
+require('dotenv').config();
 
 const app = express();
 app.use(express.json({ limit: '1mb' }));
@@ -25,12 +26,14 @@ app.use('/api/leaderboard', leaderboardRoutes);
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Ensure generated directory exists
-const generatedDir = path.join(__dirname, 'public', 'generated');
+// Vercel serverless filesystem is read-only except /tmp
+const generatedDir = process.env.VERCEL
+    ? path.join('/tmp', 'generated')
+    : path.join(__dirname, 'public', 'generated');
 if (!fs.existsSync(generatedDir)) {
     fs.mkdirSync(generatedDir, { recursive: true });
 }
-
-require('dotenv').config();
+app.use('/generated', express.static(generatedDir));
 
 // ============================================
 // Gemini API Configuration
@@ -246,7 +249,11 @@ RESPOND WITH ONLY THE COMPLETE HTML CODE. No markdown fences, no explanation bef
 // Start Server
 // ============================================
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log(`🎮 Memory Battle Royale — Single Player + Learning Mode`);
-    console.log(`🌐 Open http://localhost:${PORT} to play`);
-});
+if (!process.env.VERCEL) {
+    app.listen(PORT, () => {
+        console.log(`🎮 Memory Battle Royale — Single Player + Learning Mode`);
+        console.log(`🌐 Open http://localhost:${PORT} to play`);
+    });
+}
+
+module.exports = app;
