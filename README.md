@@ -109,7 +109,7 @@ Recent performance dominates with weight 0.5, while trend and variance correctio
 
 ## Quick Start
 
-`ash
+`bash
 git clone https://github.com/shikharuniyal/cognitive-3d-learning-ai.git
 cd cognitive-3d-learning-ai
 cp .env.example .env
